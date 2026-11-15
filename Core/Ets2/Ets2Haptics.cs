@@ -20,8 +20,11 @@ public sealed class WheelDiagnostics
 public sealed class Ets2Haptics
 {
     private const double DecayMs = 150;       // road pulse envelope time constant
-    private const double DeflectionDeadzone = 0.2;  // m/s above the wheel's own running baseline that is ignored (flat road)
-    private const double DeflectionFull = 0.8;      // m/s above baseline that maps to a full pulse
+    // Recorded highway driving: road seams give 0.4-2 m/s excess every 2-4 s, so the deadzone is set by the sensitivity
+    // setting (0.2-1.2 m/s) and full strength needs a hard hit; a soft curve keeps ordinary seams subtle.
+    private const double DeflectionDeadzoneMin = 0.2, DeflectionDeadzoneMax = 1.2;
+    private const double DeflectionFull = 3.0;      // m/s above baseline that maps to a full pulse
+    private const double RoadCurve = 0.7;
     private const double BaselineTau = 1.0;         // s, running average of suspension speed (normal body motion)
     private const double MinRoadSpeedKmh = 5, MinAirborneS = 0.3, MinDt = 0.033;
     private const long KickMs = 45, AbsHoldMs = 120;
@@ -72,7 +75,7 @@ public sealed class Ets2Haptics
         {
             double pktDt = (nowMs - _lastPktMs) / 1000.0;
             Diag.Clear();
-            if (_hasPrev && pktDt > 0.005 && pktDt < 0.25) Road(p, pktDt, nowMs, s.RoadFeelLevel * PercentToUnit);
+            if (_hasPrev && pktDt > 0.005 && pktDt < 0.25) Road(p, pktDt, nowMs, s.RoadFeelLevel * PercentToUnit, s.RoadSensitivity * PercentToUnit);
             Crash(p, pktDt, nowMs);
             Gear(p, nowMs);
             for (int i = 0; i < Ets2Packet.MaxWheels; i++) _prevSusp[i] = p.Susp != null && i < p.Susp.Length ? p.Susp[i] : 0;
@@ -142,7 +145,7 @@ public sealed class Ets2Haptics
 
     public WheelDiagnostics Diag { get; } = new();
 
-    private void Road(Ets2Packet p, double dt, long nowMs, double lvRoad)
+    private void Road(Ets2Packet p, double dt, long nowMs, double lvRoad, double sensitivity)
     {
         if (p.Susp == null || p.WheelCount == 0) return;
         bool sidesKnown = p.LeftMask != 0 && p.LeftMask != (1 << p.WheelCount) - 1;
@@ -160,7 +163,8 @@ public sealed class Ets2Haptics
                 double excess = v - _suspBase[i];
                 Diag.Vel[i] = v; Diag.Base[i] = _suspBase[i]; Diag.Excess[i] = excess;
                 _suspBase[i] += (v - _suspBase[i]) * a;
-                if (moving) x = Math.Clamp((excess - DeflectionDeadzone) / (DeflectionFull - DeflectionDeadzone), 0, 1);
+                double dz = DeflectionDeadzoneMax - (DeflectionDeadzoneMax - DeflectionDeadzoneMin) * Math.Clamp(sensitivity, 0, 1);
+                if (moving && excess > dz) x = Math.Pow(Math.Clamp((excess - dz) / (DeflectionFull - dz), 0, 1), RoadCurve);
             }
             else if (now && !was && moving && _airS[i] >= MinAirborneS) x = 0.9; // real landing, not a lift axle or flicker
             _airS[i] = now ? 0 : _airS[i] + dt;

@@ -25,6 +25,8 @@ public sealed class Ets2Settings
     // Haptics (rumble and adaptive triggers); levels are 0-100 %.
     public bool RoadFeel { get; set; } = true;
     public int RoadFeelLevel { get; set; } = 60;
+    /// <summary>0-100: higher lets smaller suspension hits through (lower deadzone).</summary>
+    public int RoadSensitivity { get; set; } = 50;
     public bool GearShift { get; set; } = true;
     public int GearShiftLevel { get; set; } = 40;
     /// <summary>R2: light accelerator with a kickdown detent; <see cref="GasTriggerLevel"/> is the detent strength.</summary>

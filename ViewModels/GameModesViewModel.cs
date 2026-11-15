@@ -46,6 +46,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private bool _roadFeel;
     [ObservableProperty] private double _roadFeelLevel;
+    [ObservableProperty] private double _roadSensitivity;
     [ObservableProperty] private bool _gearShift;
     [ObservableProperty] private double _gearShiftLevel;
     [ObservableProperty] private bool _gasTrigger;
@@ -77,7 +78,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
         DimWhenPaused = s.DimWhenPaused; AutoStart = s.AutoStart; SourceIndex = (int)s.Source;
         BlinkerColor = s.BlinkerColor; BrakeColor = s.BrakeColor; LowFuelColor = s.LowFuelColor;
         GradientLowColor = s.GradientLowColor; GradientHighColor = s.GradientHighColor;
-        RoadFeel = s.RoadFeel; RoadFeelLevel = s.RoadFeelLevel;
+        RoadFeel = s.RoadFeel; RoadFeelLevel = s.RoadFeelLevel; RoadSensitivity = s.RoadSensitivity;
         GearShift = s.GearShift; GearShiftLevel = s.GearShiftLevel;
         GasTrigger = s.GasTrigger; GasTriggerLevel = s.GasTriggerLevel; KickdownPoint = s.KickdownPoint;
         BrakeTrigger = s.BrakeTrigger; BrakeTriggerLevel = s.BrakeTriggerLevel;
@@ -111,6 +112,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
 
     partial void OnRoadFeelChanged(bool value) => Edit(s => s.RoadFeel = value);
     partial void OnRoadFeelLevelChanged(double value) => Edit(s => s.RoadFeelLevel = (int)Math.Round(value));
+    partial void OnRoadSensitivityChanged(double value) => Edit(s => s.RoadSensitivity = (int)Math.Round(value));
     partial void OnGearShiftChanged(bool value) => Edit(s => s.GearShift = value);
     partial void OnGearShiftLevelChanged(double value) => Edit(s => s.GearShiftLevel = (int)Math.Round(value));
     partial void OnGasTriggerChanged(bool value) => Edit(s => s.GasTrigger = value);
