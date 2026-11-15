@@ -18,7 +18,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     private bool _loading = true;
 
     public ObservableCollection<IGameMode> Modes { get; } = [];
-    public string[] SourceOptions { get; } = ["Hız", "Devir (RPM)"];
+    public string[] SourceOptions { get; } = ["Hız", "Devir (RPM)", "Gaz pedalı"];
 
     [ObservableProperty] private IGameMode? _selected;
     [ObservableProperty] private bool _isRunning;
@@ -63,7 +63,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     partial void OnLowFuelChanged(bool value) => Edit(s => s.LowFuel = value);
     partial void OnGradientChanged(bool value) => Edit(s => s.Gradient = value);
     partial void OnDimWhenPausedChanged(bool value) => Edit(s => s.DimWhenPaused = value);
-    partial void OnSourceIndexChanged(int value) => Edit(s => s.Source = value == 1 ? GradientSource.Rpm : GradientSource.Speed);
+    partial void OnSourceIndexChanged(int value) => Edit(s => s.Source = (GradientSource)Math.Clamp(value, 0, 2));
     partial void OnBlinkerColorChanged(string value) => Edit(s => s.BlinkerColor = value);
     partial void OnBrakeColorChanged(string value) => Edit(s => s.BrakeColor = value);
     partial void OnLowFuelColorChanged(string value) => Edit(s => s.LowFuelColor = value);
@@ -105,7 +105,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
         if (p.Hazard) on.Add("Dörtlü");
         if (p.Brake) on.Add("Fren");
         if (p.Paused) on.Add("Duraklatıldı");
-        Readout = $"Hız: {p.SpeedKmh:F0} km/h   Devir: {p.Rpm:F0}/{p.RpmLimit:F0}\n" +
+        Readout = $"Hız: {p.SpeedKmh:F0} km/h   Devir: {p.Rpm:F0}/{p.RpmLimit:F0}   Gaz: %{p.Throttle * 100:F0}\n" +
                   $"Yakıt: {p.Fuel:F0}/{p.FuelCapacity:F0} L (%{p.FuelFraction * 100:F0})   Motor: {(p.EngineOn ? "açık" : "kapalı")}\n" +
                   $"Aktif: {(on.Count == 0 ? "-" : string.Join(", ", on))}   Paket #{p.Seq}";
     }

@@ -77,9 +77,13 @@ public sealed class Ets2Mode : IGameMode, IDisposable
         }
         else if (s.Gradient)
         {
-            double max = s.Source == GradientSource.Speed ? Math.Max(1, s.MaxSpeedKmh) : (p.RpmLimit > 0 ? p.RpmLimit : 2500);
-            double v = s.Source == GradientSource.Speed ? p.SpeedKmh : p.Rpm;
-            (r, g, b) = Hsv(120 * (1 - Math.Clamp(v / max, 0, 1)));
+            double t = s.Source switch
+            {
+                GradientSource.Speed => p.SpeedKmh / Math.Max(1, s.MaxSpeedKmh),
+                GradientSource.Rpm => p.Rpm / (p.RpmLimit > 0 ? p.RpmLimit : 2500),
+                _ => p.Throttle,
+            };
+            (r, g, b) = Hsv(120 * (1 - Math.Clamp(t, 0, 1)));
         }
 
         if (s.DimWhenPaused && p.Paused) { r = (byte)(r * 0.12); g = (byte)(g * 0.12); b = (byte)(b * 0.12); }

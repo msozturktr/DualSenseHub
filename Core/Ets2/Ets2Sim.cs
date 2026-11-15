@@ -24,7 +24,7 @@ public static class Ets2Sim
             if (phase == 3) { flags |= 4; if (blink) flags |= 3; }
             if (phase == 4) flags |= 8;
             float speed = (float)(10 + 12 * Math.Sin(t / 2) * Math.Sin(t / 2)); // m/s
-            var p = new Ets2Packet(flags, speed, 900 + speed * 60, 2500, 300, 600, ++seq);
+            var p = new Ets2Packet(flags, speed, 900 + speed * 60, 2500, 300, 600, ++seq, (float)(0.5 + 0.5 * Math.Sin(t)));
             await udp.SendAsync(p.ToBytes(), dest, ct).ConfigureAwait(false);
             try { await Task.Delay(33, ct).ConfigureAwait(false); } catch (OperationCanceledException) { break; }
         }

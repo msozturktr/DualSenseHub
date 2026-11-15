@@ -4,9 +4,10 @@ namespace DualSenseHub.Core.Ets2;
 
 /// <summary>Decoded telemetry datagram; see ets2-plugin/PROTOCOL.md.</summary>
 public readonly record struct Ets2Packet(
-    ushort Flags, float Speed, float Rpm, float RpmLimit, float Fuel, float FuelCapacity, uint Seq)
+    ushort Flags, float Speed, float Rpm, float RpmLimit, float Fuel, float FuelCapacity, uint Seq, float Throttle = 0)
 {
-    public const int Size = 32;
+    public const int Size = 36;
+    private const int MinSize = 32; // version-1 packets from older plugin builds lack throttle
     public const int Port = 47555;
 
     public bool LeftBlinker => (Flags & 1) != 0;
@@ -22,7 +23,7 @@ public readonly record struct Ets2Packet(
     public static bool TryParse(ReadOnlySpan<byte> d, out Ets2Packet p)
     {
         p = default;
-        if (d.Length < Size || d[0] != (byte)'D' || d[1] != (byte)'S' || d[2] != (byte)'H' || d[3] != (byte)'1' || d[4] != 1) return false;
+        if (d.Length < MinSize || d[0] != (byte)'D' || d[1] != (byte)'S' || d[2] != (byte)'H' || d[3] != (byte)'1' || d[4] != 1) return false;
         p = new Ets2Packet(
             BinaryPrimitives.ReadUInt16LittleEndian(d[6..]),
             BinaryPrimitives.ReadSingleLittleEndian(d[8..]),
@@ -30,7 +31,8 @@ public readonly record struct Ets2Packet(
             BinaryPrimitives.ReadSingleLittleEndian(d[16..]),
             BinaryPrimitives.ReadSingleLittleEndian(d[20..]),
             BinaryPrimitives.ReadSingleLittleEndian(d[24..]),
-            BinaryPrimitives.ReadUInt32LittleEndian(d[28..]));
+            BinaryPrimitives.ReadUInt32LittleEndian(d[28..]),
+            d.Length >= Size ? BinaryPrimitives.ReadSingleLittleEndian(d[32..]) : 0);
         return true;
     }
 
@@ -46,6 +48,7 @@ public readonly record struct Ets2Packet(
         BinaryPrimitives.WriteSingleLittleEndian(b.AsSpan(20), Fuel);
         BinaryPrimitives.WriteSingleLittleEndian(b.AsSpan(24), FuelCapacity);
         BinaryPrimitives.WriteUInt32LittleEndian(b.AsSpan(28), Seq);
+        BinaryPrimitives.WriteSingleLittleEndian(b.AsSpan(32), Throttle);
         return b;
     }
 }

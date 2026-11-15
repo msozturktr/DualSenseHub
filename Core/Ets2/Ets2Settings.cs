@@ -1,6 +1,6 @@
 namespace DualSenseHub.Core.Ets2;
 
-public enum GradientSource { Speed, Rpm }
+public enum GradientSource { Speed, Rpm, Throttle }
 
 /// <summary>User-configurable ETS2 rules; persisted in ets2.json.</summary>
 public sealed class Ets2Settings
@@ -11,7 +11,7 @@ public sealed class Ets2Settings
     public bool LowFuel { get; set; } = true;
     public bool Gradient { get; set; } = true;
     public bool DimWhenPaused { get; set; } = true;
-    public GradientSource Source { get; set; } = GradientSource.Speed;
+    public GradientSource Source { get; set; } = GradientSource.Throttle;
     /// <summary>Speed (km/h) mapped to full red in speed gradient mode.</summary>
     public int MaxSpeedKmh { get; set; } = 110;
     public string BlinkerColor { get; set; } = "FF8C00";

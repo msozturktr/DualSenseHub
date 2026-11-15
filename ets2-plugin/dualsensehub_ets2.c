@@ -22,9 +22,10 @@ typedef struct {
     float fuel;         /* liters */
     float fuel_capacity;
     uint32_t seq;
+    float throttle;     /* 0..1, truck.effective.throttle */
 } packet_t;
 #pragma pack(pop)
-_Static_assert(sizeof(packet_t) == 32, "packet size");
+_Static_assert(sizeof(packet_t) == 36, "packet size");
 
 /* ws2_32 (stdcall == default on x64) */
 typedef uintptr_t SOCKET;
@@ -74,6 +75,7 @@ static void on_float(scs_string_t name, scs_u32_t index, const scs_value_t *v, s
     case 0: g_pkt.speed = f; break;
     case 1: g_pkt.rpm = f; break;
     case 2: g_pkt.fuel = f; break;
+    case 3: g_pkt.throttle = f; break;
     }
 }
 
@@ -112,7 +114,7 @@ EXPORT scs_result_t scs_telemetry_init(const scs_u32_t version, const void *para
     g_pkt.version = 1;
     g_pkt.reserved = 0;
     g_pkt.flags = 0;
-    g_pkt.speed = g_pkt.rpm = g_pkt.rpm_limit = g_pkt.fuel = g_pkt.fuel_capacity = 0.0f;
+    g_pkt.speed = g_pkt.rpm = g_pkt.rpm_limit = g_pkt.fuel = g_pkt.fuel_capacity = g_pkt.throttle = 0.0f;
     g_pkt.seq = 0;
     g_last_flags = 0xFFFF; g_last_send = g_render_time = 0;
 
@@ -140,6 +142,7 @@ EXPORT scs_result_t scs_telemetry_init(const scs_u32_t version, const void *para
     p->register_for_channel("truck.speed", SCS_U32_NIL, SCS_VALUE_TYPE_float, 0, on_float, (void *)(uintptr_t)0);
     p->register_for_channel("truck.engine.rpm", SCS_U32_NIL, SCS_VALUE_TYPE_float, 0, on_float, (void *)(uintptr_t)1);
     p->register_for_channel("truck.fuel.amount", SCS_U32_NIL, SCS_VALUE_TYPE_float, 0, on_float, (void *)(uintptr_t)2);
+    p->register_for_channel("truck.effective.throttle", SCS_U32_NIL, SCS_VALUE_TYPE_float, 0, on_float, (void *)(uintptr_t)3);
     return SCS_RESULT_ok;
 }
 
