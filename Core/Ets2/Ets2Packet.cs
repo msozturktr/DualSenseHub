@@ -28,10 +28,15 @@ public readonly record struct Ets2Packet(
     public double SpeedKmh => Speed * 3.6;
     public double FuelFraction => FuelCapacity > 0 ? Math.Clamp(Fuel / FuelCapacity, 0, 1) : 1;
 
-    public static bool TryParse(ReadOnlySpan<byte> d, out Ets2Packet p)
+    public static bool TryParse(ReadOnlySpan<byte> d, out Ets2Packet p) => TryParse(d, out p, out _);
+
+    /// <summary>Forward compatible: any version >= 1 is accepted and the fields known to this build are read from the prefix.</summary>
+    public static bool TryParse(ReadOnlySpan<byte> d, out Ets2Packet p, out string? reject)
     {
-        p = default;
-        if (d.Length < MinSize || d[0] != (byte)'D' || d[1] != (byte)'S' || d[2] != (byte)'H' || d[3] != (byte)'1' || (d[4] < 1 || d[4] > 3)) return false;
+        p = default; reject = null;
+        if (d.Length < MinSize) { reject = $"çok kısa ({d.Length} bayt)"; return false; }
+        if (d[0] != (byte)'D' || d[1] != (byte)'S' || d[2] != (byte)'H' || d[3] != (byte)'1') { reject = "tanınmayan başlık"; return false; }
+        if (d[4] < 1) { reject = $"geçersiz sürüm v{d[4]}"; return false; }
         bool v2 = d[4] >= 2 && d.Length >= SizeV2;
         p = new Ets2Packet(
             BinaryPrimitives.ReadUInt16LittleEndian(d[6..]),

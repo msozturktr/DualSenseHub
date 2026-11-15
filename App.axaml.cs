@@ -36,7 +36,12 @@ public partial class App : Application
             };
             desktop.Exit += (_, _) => { _vm.Dispose(); };
             SetupTray();
-            if (Program.Instance != null) Program.Instance.ShowRequested += () => Dispatcher.UIThread.Post(ShowWindow);
+            if (Program.Instance != null)
+            {
+                Program.Instance.ShowRequested += () => Dispatcher.UIThread.Post(ShowWindow);
+                Program.Instance.QuitRequested += () => Dispatcher.UIThread.Post(Quit);
+                Program.Instance.StatusProvider = () => _vm.Games.StatusReport();
+            }
             bool hidden = desktop.Args?.Any(a => a == "--tray" || a == "--minimized") == true;
             if (!hidden) ShowWindow();
         }

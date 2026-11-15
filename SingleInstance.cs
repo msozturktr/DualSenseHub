@@ -17,10 +17,31 @@ public sealed class SingleInstance : IDisposable
         _path = Path.Combine(dir, "dualsensehub.sock");
     }
 
-    /// <summary>Returns true when this process is the primary instance; otherwise signals the running one and returns false.</summary>
+    /// <summary>Build identity: changes with every compile, so a replaced binary is detected.</summary>
+    public static string Identity { get; } = typeof(SingleInstance).Module.ModuleVersionId.ToString("N");
+
+    /// <summary>True when the executable this process runs from was replaced or removed on disk.</summary>
+    public static bool ExecutableDeleted()
+    {
+        try { return (new FileInfo("/proc/self/exe").LinkTarget ?? "").EndsWith("(deleted)"); }
+        catch { return false; }
+    }
+
+    public event Action? QuitRequested;
+    public Func<string>? StatusProvider { get; set; }
+
+    /// <summary>
+    /// Returns true when this process is the primary instance; otherwise signals the running one and returns false.
+    /// A running instance with a different build identity (or a deleted executable) is asked to quit and replaced.
+    /// </summary>
     public bool TryBecomePrimary()
     {
-        if (SignalExisting()) return false;
+        var deadline = DateTime.UtcNow.AddSeconds(3);
+        if (File.Exists(_path) && Query("hello " + Identity, out var reply))
+        {
+            if (reply != "bye") return false; // same build (or legacy instance that just showed its window)
+            while (DateTime.UtcNow < deadline && Query("ping", out _)) Thread.Sleep(100);
+        }
         try { File.Delete(_path); } catch { }
         try
         {
@@ -38,18 +59,28 @@ public sealed class SingleInstance : IDisposable
         return true;
     }
 
-    private bool SignalExisting()
+    /// <summary>Sends one command line to the running instance. Returns false if none answers on the socket; reply may be empty for legacy instances.</summary>
+    public static bool Query(string command, out string reply)
     {
-        if (!File.Exists(_path)) return false;
+        reply = "";
         try
         {
             using var c = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-            c.SendTimeout = 1000;
-            c.Connect(new UnixDomainSocketEndPoint(_path));
-            c.Send(Encoding.ASCII.GetBytes("show\n"));
+            c.SendTimeout = 1000; c.ReceiveTimeout = 1500;
+            c.Connect(new UnixDomainSocketEndPoint(SocketPath()));
+            c.Send(Encoding.UTF8.GetBytes(command + "\n"));
+            var buf = new byte[4096];
+            try { int n = c.Receive(buf); reply = Encoding.UTF8.GetString(buf, 0, n).Trim(); } catch (SocketException) { }
             return true;
         }
         catch { return false; }
+    }
+
+    private static string SocketPath()
+    {
+        var dir = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
+        if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) dir = Path.GetTempPath();
+        return Path.Combine(dir, "dualsensehub.sock");
     }
 
     private void Accept()
@@ -60,16 +91,33 @@ public sealed class SingleInstance : IDisposable
             try
             {
                 using var c = l.Accept();
-                var buf = new byte[16];
+                var buf = new byte[256];
                 c.ReceiveTimeout = 1000;
-                c.Receive(buf);
-                try { ShowRequested?.Invoke(); } catch (Exception e) { Console.Error.WriteLine(e); }
+                int n = c.Receive(buf);
+                var cmd = Encoding.UTF8.GetString(buf, 0, n).Trim();
+                string reply = "ok";
+                try
+                {
+                    if (cmd.StartsWith("hello "))
+                    {
+                        if (cmd[6..] == Identity && !ExecutableDeleted()) { reply = "same"; ShowRequested?.Invoke(); }
+                        else { reply = "bye"; Reply(c, reply); QuitRequested?.Invoke(); continue; }
+                    }
+                    else if (cmd == "quit") { reply = "bye"; Reply(c, reply); QuitRequested?.Invoke(); continue; }
+                    else if (cmd == "status") reply = StatusProvider?.Invoke() ?? "starting";
+                    else if (cmd == "ping") reply = "pong";
+                    else ShowRequested?.Invoke();
+                }
+                catch (Exception e) { Console.Error.WriteLine(e); }
+                Reply(c, reply);
             }
             catch (ObjectDisposedException) { return; }
             catch (SocketException) when (_listener == null) { return; }
             catch (Exception) { Thread.Sleep(100); }
         }
     }
+
+    private static void Reply(Socket c, string s) { try { c.Send(Encoding.UTF8.GetBytes(s + "\n")); } catch { } }
 
     public void Dispose()
     {

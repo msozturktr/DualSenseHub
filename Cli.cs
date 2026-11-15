@@ -7,11 +7,13 @@ namespace DualSenseHub;
 public static class Cli
 {
     public static bool IsCliRun(string[] args) =>
-        args.Contains("--info") || args.Contains("--apply-last") || args.Contains("--set-color")
+        args.Contains("--status") || args.Contains("--quit") || args.Contains("--info") || args.Contains("--apply-last") || args.Contains("--set-color")
         || args.Contains("--ets2-sim") || args.Contains("--ets2-haptics-test") || args.Contains("--ets2-settings-test") || args.Contains("--rumble-test") || args.Contains("--ets2-listen-test") || args.Contains("--ets2-auto-test");
 
     public static int Run(string[] args)
     {
+        if (args.Contains("--status")) return SingleInstance.Query("status", out var st) ? Print(st) : NoInstance();
+        if (args.Contains("--quit")) return SingleInstance.Query("quit", out var q) ? Print(q) : NoInstance();
         if (args.Contains("--info")) return Info();
         if (args.Contains("--set-color")) return SetColor(args);
         if (args.Contains("--ets2-haptics-test")) return Ets2HapticsTest(args);
@@ -22,6 +24,9 @@ public static class Cli
         if (args.Contains("--ets2-auto-test")) return Ets2AutoTest(args);
         return ApplyLast(args);
     }
+
+    private static int Print(string s) { Console.WriteLine(s); return 0; }
+    private static int NoInstance() { Console.Error.WriteLine("No running instance."); return 1; }
 
     private static int Info()
     {
@@ -223,13 +228,15 @@ public static class Cli
         bool v2ok = Ets2Packet.TryParse(bytes, out var back) && back.Gear == rt.Gear && back.WheelCount == rt.WheelCount && back.Susp![2] == rt.Susp![2] && back.Radius![0] == rt.Radius![0] && back.LeftMask == rt.LeftMask;
         bool v1ok = Ets2Packet.TryParse(bytes.AsSpan(0, 36).ToArray().Select((b, i) => i == 4 ? (byte)1 : b).ToArray(), out var old) && old.Rpm == rt.Rpm && old.WheelCount == 0;
         bool v1short = Ets2Packet.TryParse(bytes.AsSpan(0, 32).ToArray().Select((b, i) => i == 4 ? (byte)1 : b).ToArray(), out _);
-        Console.WriteLine($"Packet round trip v2: {v2ok}; v1/36 bytes: {v1ok}; v1/32 bytes: {v1short}");
+        var v4 = new byte[200]; bytes.CopyTo(v4, 0); v4[4] = 4;
+        bool v4ok = Ets2Packet.TryParse(v4, out var fut) && fut.Gear == rt.Gear && fut.InputThrottle >= 0 && !Ets2Packet.TryParse(new byte[10], out _);
+        Console.WriteLine($"Packet round trip v2: {v2ok}; v1/36 bytes: {v1ok}; v1/32 bytes: {v1short}; future v4: {v4ok}");
         string[] need = ["road", "gear", "brake", "parking", "kickdown", "engine", "abs"];
         var missing = need.Where(n => !totals.ContainsKey(n)).ToArray();
         bool r2static = rSends == 1 && lastR != null && lastR.Mode == 0x25 && !totals.ContainsKey("rpm-limit");
         Console.WriteLine($"R2 static kickdown (1 send, weapon, no rpm-limit): {r2static}");
         Console.WriteLine(missing.Length == 0 ? "All features triggered." : "NOT triggered: " + string.Join(", ", missing));
-        return missing.Length == 0 && idleOk(paused) && idleOk(gone) && r2static && v2ok && v1ok && v1short ? 0 : 1;
+        return missing.Length == 0 && idleOk(paused) && idleOk(gone) && r2static && v2ok && v1ok && v1short && v4ok ? 0 : 1;
     }
 
     private static string Describe(TriggerEffect e) => e.Mode switch

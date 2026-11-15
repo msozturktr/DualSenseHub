@@ -151,7 +151,12 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
         string info = $"UDP {Ets2Packet.Port}: {state} | paket: {_listener.PacketCount} | son paket: {ageText} | protokol: {ver}";
         if (!_ets2.Connected)
         {
-            ConnectionText = (_listener.Listening ? "Bağlantı yok (oyun/eklenti bekleniyor)" : "Dinleyici çalışmıyor") + "\n" + info;
+            string head = !_listener.Listening ? "Dinleyici çalışmıyor"
+                : _listener.RejectedCount > 0 && _listener.PacketCount == 0 && _listener.LastRejectVersion > 0
+                    ? $"Paket geliyor ama çözülemedi (sürüm v{_listener.LastRejectVersion}: {_listener.LastRejectReason})"
+                : _listener.RejectedCount > 0 && _listener.PacketCount == 0 ? $"Paket geliyor ama çözülemedi ({_listener.LastRejectReason})"
+                : "Bağlantı yok (oyun/eklenti bekleniyor)";
+            ConnectionText = head + "\n" + info;
             Readout = ""; return;
         }
         var p = _listener.Latest;
@@ -166,6 +171,12 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
                   $"Yakıt: {p.Fuel:F0}/{p.FuelCapacity:F0} L (%{p.FuelFraction * 100:F0})   Motor: {(p.EngineOn ? "açık" : "kapalı")}\n" +
                   $"Aktif: {(on.Count == 0 ? "-" : string.Join(", ", on))}   Paket #{p.Seq}";
     }
+
+    /// <summary>Plain-text state for <c>dualsensehub --status</c>.</summary>
+    public string StatusReport() =>
+        $"listening={_listener.Listening} port={Ets2Packet.Port} packets={_listener.PacketCount} rejected={_listener.RejectedCount} " +
+        $"lastVersion={_listener.ProtocolVersion} lastRejectVersion={_listener.LastRejectVersion} lastRejectReason={_listener.LastRejectReason ?? "-"} " +
+        $"ageMs={_listener.LastPacketAgeMs} connected={_listener.Listening && _ets2.Connected} modeRunning={IsRunning} error={_listener.Error ?? "-"}";
 
     public void Dispose()
     {

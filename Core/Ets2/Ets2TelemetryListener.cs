@@ -18,6 +18,9 @@ public sealed class Ets2TelemetryListener : IDisposable
     private long _lastTicks;
     private long _count;
     private int _version;
+    private long _rejected;
+    private int _rejectVersion;
+    private volatile string? _rejectReason;
     private volatile bool _listening;
     private volatile string? _error;
     private Ets2Packet _latest;
@@ -28,6 +31,11 @@ public sealed class Ets2TelemetryListener : IDisposable
     public long PacketCount => Interlocked.Read(ref _count);
     /// <summary>Protocol version byte of the last packet (0 if none).</summary>
     public int ProtocolVersion => Volatile.Read(ref _version);
+    /// <summary>Datagrams that arrived but could not be parsed.</summary>
+    public long RejectedCount => Interlocked.Read(ref _rejected);
+    public string? LastRejectReason => _rejectReason;
+    /// <summary>Version byte of the last rejected datagram (0 if unknown).</summary>
+    public int LastRejectVersion => Volatile.Read(ref _rejectVersion);
     public Ets2Packet Latest { get { lock (_gate) return _latest; } }
     /// <summary>Milliseconds since the last valid packet, or -1 if none was ever received.</summary>
     public long LastPacketAgeMs { get { long t = Interlocked.Read(ref _lastTicks); return t == 0 ? -1 : Environment.TickCount64 - t; } }
@@ -75,7 +83,12 @@ public sealed class Ets2TelemetryListener : IDisposable
                         Thread.Sleep(100);
                         continue;
                     }
-                    if (!Ets2Packet.TryParse(buf.AsSpan(0, n), out var p)) continue;
+                    if (!Ets2Packet.TryParse(buf.AsSpan(0, n), out var p, out var why))
+                    {
+                        _rejectReason = why; Volatile.Write(ref _rejectVersion, n > 4 ? buf[4] : 0);
+                        Interlocked.Increment(ref _rejected);
+                        continue;
+                    }
                     lock (_gate) _latest = p;
                     Volatile.Write(ref _version, buf[4]);
                     Interlocked.Increment(ref _count);
