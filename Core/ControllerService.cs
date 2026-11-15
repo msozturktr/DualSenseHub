@@ -121,8 +121,6 @@ public sealed class ControllerService : ILightOutput, IDisposable
 
     // ---- ILightOutput ----
 
-    private string? _lightbarSetupFor;
-
     public void SetLightbar(byte r, byte g, byte b)
     {
         lock (_lock)
@@ -133,8 +131,8 @@ public sealed class ControllerService : ILightOutput, IDisposable
             if (hid != null)
             {
                 hid.Output.R = r; hid.Output.G = g; hid.Output.B = b;
-                if (_lightbarSetupFor != info.HidrawPath && hid.Send(OutputGroups.Lightbar | OutputGroups.LightbarSetup))
-                    _lightbarSetupFor = info.HidrawPath;
+                // Raw report with LIGHT_OUT every time: retakes control if Steam handed it back to firmware.
+                if (hid.Send(OutputGroups.Lightbar | OutputGroups.LightbarSetup)) return;
             }
             if (info.LightbarLed != null)
             {
