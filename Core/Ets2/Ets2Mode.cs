@@ -73,7 +73,7 @@ public sealed class Ets2Mode : IGameMode, IDisposable
         long now = _clock.ElapsedMilliseconds;
         _haptics.SubstanceNames = _listener.SubstanceNames;
         var f = _haptics.Update(_listener.Latest, _listener.Connected, Settings, now);
-        LastHaptics = $"motor {f.Strong}/{f.Weak} · {f.Active}" + (_haptics.CurrentSurface.Length > 0 ? $" · zemin: {_haptics.CurrentSurface}" : "");
+        LastHaptics = $"motor {f.Strong}/{f.Weak} · {f.Active}" + (_haptics.CurrentSurface.Length > 0 ? $" · zemin: {_haptics.CurrentSurface}" : "") + $" · pürüz: {_haptics.Roughness.L:F2}/{_haptics.Roughness.R:F2} (eşik 0.12)";
         bool changed = f.Strong != _lastStrong || f.Weak != _lastWeak;
         if (changed || (f.Strong | f.Weak) != 0 && now - _lastRumbleMs >= RumbleKeepaliveMs)
         {

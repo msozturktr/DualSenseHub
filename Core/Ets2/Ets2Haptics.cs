@@ -22,6 +22,14 @@ public sealed class Ets2Haptics
     // Road feel has two parts: a surface texture chosen by the substance under the wheels (suspension deflection does not track
     // perceived roughness: highway seams give 0.4-2 m/s spikes), and rare hard hits from suspension speed (kerbs, potholes, landings).
     private const double HitThresholdMax = 3.0, HitThresholdMin = 1.4; // m/s above baseline at sensitivity 0 / 100 %
+    // Broken road = sustained density of moderate suspension spikes. Highway seams are isolated: recorded 1 s density
+    // (share of one side's wheel samples with excess > 0.15 m/s) peaked at 0.09 on highways, so rough texture starts above that.
+    private const double RoughSpike = 0.15, RoughWindowMs = 1000, RoughStart = 0.12, RoughFull = 0.4, RoughGain = 0.6;
+    private readonly Queue<(long T, int L, int NL, int R, int NR)> _rough = new();
+    private int _rL, _rNL, _rR, _rNR;
+    private double _roughL, _roughR;
+    /// <summary>1 s spike density per side (diagnostics).</summary>
+    public (double L, double R) Roughness => (_roughL, _roughR);
     private const double HitFull = 5.0;             // m/s above baseline that maps to a full hit
     private const long HitMs = 70;                  // crisp pulse on the strong motor
     private const double BaselineTau = 1.0;         // s, running average of suspension speed (normal body motion)
@@ -96,6 +104,9 @@ public sealed class Ets2Haptics
         {
             double sf = Math.Clamp((p.SpeedKmh - TextureMinKmh) / (TextureFullKmh - TextureMinKmh), 0, 1);
             double tl = Texture(_surfL, sf, nowMs), tr = Texture(_surfR, sf, nowMs);
+            // Broken asphalt: continuous texture scaled by spike density; side by wheel side.
+            if (_surfL == Surface.Road) tl = Math.Max(tl, RoughGain * sf * Math.Clamp((_roughL - RoughStart) / (RoughFull - RoughStart), 0, 1));
+            if (_surfR == Surface.Road) tr = Math.Max(tr, RoughGain * sf * Math.Clamp((_roughR - RoughStart) / (RoughFull - RoughStart), 0, 1));
             if (tl > 0 || tr > 0)
             {
                 strong = Math.Max(strong, tl * lvRoad); weak = Math.Max(weak, tr * lvRoad);
@@ -203,6 +214,7 @@ public sealed class Ets2Haptics
         double threshold = HitThresholdMax - (HitThresholdMax - HitThresholdMin) * Math.Clamp(sensitivity, 0, 1);
         Surface sl = Surface.Road, sr = Surface.Road;
         string primary = "", first = "";
+        int cl = 0, nl = 0, cr = 0, nr = 0;
         for (int i = 0; i < p.WheelCount && i < Ets2Packet.MaxWheels; i++)
         {
             bool now = (p.GroundMask >> i & 1) != 0, was = (_prevGround >> i & 1) != 0;
@@ -226,6 +238,9 @@ public sealed class Ets2Haptics
                 double v = Math.Abs(p.Susp[i] - _prevSusp[i]) / dt;
                 double excess = v - _suspBase[i];
                 Diag.Vel[i] = v; Diag.Base[i] = _suspBase[i]; Diag.Excess[i] = excess;
+                bool spike = moving && excess > RoughSpike;
+                if (!sidesKnown || isLeft) { nl++; if (spike) cl++; }
+                if (!sidesKnown || !isLeft) { nr++; if (spike) cr++; }
                 _suspBase[i] += (v - _suspBase[i]) * a;
                 if (moving && excess > threshold) x = 0.6 + 0.4 * Math.Clamp((excess - threshold) / (HitFull - threshold), 0, 1);
             }
@@ -235,6 +250,10 @@ public sealed class Ets2Haptics
             { _hitAmp = x; _hitUntil = nowMs + HitMs; _lastHit = nowMs; }
         }
         _surfL = sl; _surfR = sr;
+        _rough.Enqueue((nowMs, cl, nl, cr, nr)); _rL += cl; _rNL += nl; _rR += cr; _rNR += nr;
+        while (_rough.Count > 0 && nowMs - _rough.Peek().T > RoughWindowMs)
+        { var o = _rough.Dequeue(); _rL -= o.L; _rNL -= o.NL; _rR -= o.R; _rNR -= o.NR; }
+        _roughL = _rNL > 0 ? (double)_rL / _rNL : 0; _roughR = _rNR > 0 ? (double)_rR / _rNR : 0;
         CurrentSurface = primary.Length > 0 ? primary : first;
     }
 
