@@ -1,7 +1,7 @@
-# DualSense Hub ETS2 UDP protocol (version 2)
+# DualSense Hub ETS2 UDP protocol (version 3)
 
 The plugin sends one datagram per update (about 30 Hz, plus immediately when a flag changes) to `127.0.0.1:47555`.
-Fixed 148-byte packet (version 2). Version-1 packets (36 bytes, or 32 in early builds without throttle) are still accepted; missing fields read as 0. Little-endian, packed. The magic stays `DSH1`; the version byte decides the layout.
+Fixed 148-byte packet (version 3). Version-1 packets (36 bytes, or 32 in early builds without throttle) are still accepted; missing fields read as 0. Little-endian, packed. The magic stays `DSH1`; the version byte decides the layout.
 
 | Offset | Type    | Field         | Notes |
 |-------:|---------|---------------|-------|
@@ -35,12 +35,18 @@ Version 2 fields (offset 36 onward):
 | 84     | f32[8]  | vel          | `truck.wheel.angular_velocity`, rotations per second (positive = forward) |
 | 116    | f32[8]  | radius       | config `wheel.radius`, meters |
 
+Version 3 field:
+
+| Offset | Type | Field | Notes |
+|-------:|------|-------|-------|
+| 148    | f32  | input_throttle | 0..1, `truck.input.throttle` (raw pedal, unlike the effective throttle at 32); the app colors by this |
+
 Surface speed of a wheel = `abs(vel) * 2 * pi * radius` (m/s). Assumptions: vehicle space has +x to the right, so x < 0 means a left wheel;
 the SDK has no ABS channel, so the app infers lockup from wheel speed versus truck speed. Indexed channels are registered for indices 0..7;
 indices beyond the truck's real wheel count fail to register and stay 0.
 
 Channels used: `truck.light.lblinker`, `truck.light.rblinker`, `truck.hazard.warning`, `truck.light.brake`, `truck.engine.enabled`,
-`truck.electric.enabled`, `truck.speed`, `truck.engine.rpm`, `truck.fuel.amount`, `truck.effective.throttle`, and (v2) `truck.effective.brake`,
+`truck.electric.enabled`, `truck.speed`, `truck.engine.rpm`, `truck.fuel.amount`, `truck.effective.throttle`, (v3) `truck.input.throttle`, and (v2) `truck.effective.brake`,
 `truck.brake.air.pressure`, `truck.brake.parking`, `truck.engine.gear`, indexed `truck.wheel.suspension.deflection`, `truck.wheel.angular_velocity`, `truck.wheel.on_ground`. The switch-state channels are not used because
 the light channels already follow the blink cycle.
 

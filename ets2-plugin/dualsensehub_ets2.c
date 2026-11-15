@@ -5,7 +5,7 @@
 #define PORT 47555
 #define MIN_INTERVAL_US 33000ull
 #define MAX_WHEELS 8
-#define PROTOCOL_VERSION 2
+#define PROTOCOL_VERSION 3
 
 enum {
     F_LBLINKER = 1 << 0, F_RBLINKER = 1 << 1, F_HAZARD = 1 << 2, F_BRAKE = 1 << 3,
@@ -36,9 +36,11 @@ typedef struct {
     float susp[MAX_WHEELS];   /* truck.wheel.suspension.deflection, m */
     float vel[MAX_WHEELS];    /* truck.wheel.angular_velocity, rotations/s */
     float radius[MAX_WHEELS]; /* config wheel.radius, m */
+    /* version 3 */
+    float input_throttle;     /* 0..1, truck.input.throttle (raw pedal) */
 } packet_t;
 #pragma pack(pop)
-_Static_assert(sizeof(packet_t) == 148, "packet size");
+_Static_assert(sizeof(packet_t) == 152, "packet size");
 
 /* ws2_32 (stdcall == default on x64) */
 typedef uintptr_t SOCKET;
@@ -113,6 +115,7 @@ static void on_float(scs_string_t name, scs_u32_t index, const scs_value_t *v, s
     case 3: g_pkt.throttle = f; break;
     case 4: g_pkt.brake = f; break;
     case 5: g_pkt.air_pressure = f; break;
+    case 6: g_pkt.input_throttle = f; break;
     }
 }
 
@@ -165,7 +168,7 @@ EXPORT scs_result_t scs_telemetry_init(const scs_u32_t version, const void *para
     g_pkt.reserved = 0;
     g_pkt.flags = 0;
     g_pkt.speed = g_pkt.rpm = g_pkt.rpm_limit = g_pkt.fuel = g_pkt.fuel_capacity = g_pkt.throttle = 0.0f;
-    g_pkt.brake = g_pkt.air_pressure = 0.0f;
+    g_pkt.brake = g_pkt.air_pressure = g_pkt.input_throttle = 0.0f;
     g_pkt.gear = 0;
     g_pkt.wheel_count = g_pkt.ground_mask = g_pkt.left_mask = g_pkt.reserved2 = 0;
     for (int i = 0; i < MAX_WHEELS; i++) g_pkt.susp[i] = g_pkt.vel[i] = g_pkt.radius[i] = 0.0f;
@@ -197,6 +200,7 @@ EXPORT scs_result_t scs_telemetry_init(const scs_u32_t version, const void *para
     p->register_for_channel("truck.engine.rpm", SCS_U32_NIL, SCS_VALUE_TYPE_float, 0, on_float, (void *)(uintptr_t)1);
     p->register_for_channel("truck.fuel.amount", SCS_U32_NIL, SCS_VALUE_TYPE_float, 0, on_float, (void *)(uintptr_t)2);
     p->register_for_channel("truck.effective.throttle", SCS_U32_NIL, SCS_VALUE_TYPE_float, 0, on_float, (void *)(uintptr_t)3);
+    p->register_for_channel("truck.input.throttle", SCS_U32_NIL, SCS_VALUE_TYPE_float, 0, on_float, (void *)(uintptr_t)6);
     p->register_for_channel("truck.effective.brake", SCS_U32_NIL, SCS_VALUE_TYPE_float, 0, on_float, (void *)(uintptr_t)4);
     p->register_for_channel("truck.brake.air.pressure", SCS_U32_NIL, SCS_VALUE_TYPE_float, 0, on_float, (void *)(uintptr_t)5);
     p->register_for_channel("truck.brake.parking", SCS_U32_NIL, SCS_VALUE_TYPE_bool, 0, on_bool, (void *)(uintptr_t)F_PARKING);

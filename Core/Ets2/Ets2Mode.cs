@@ -125,7 +125,7 @@ public sealed class Ets2Mode : IGameMode, IDisposable
             {
                 GradientSource.Speed => p.SpeedKmh / Math.Max(1, s.MaxSpeedKmh),
                 GradientSource.Rpm => p.Rpm / (p.RpmLimit > 0 ? p.RpmLimit : 2500),
-                _ => p.Throttle,
+                _ => p.ColorThrottle,
             };
             (r, g, b) = Hsv(120 * (1 - Math.Clamp(t, 0, 1)));
         }

@@ -67,7 +67,17 @@ public static class ConfigStore
     private static string ProfilesPath => System.IO.Path.Combine(Dir, "profiles.json");
 
     private static string Ets2Path => System.IO.Path.Combine(Dir, "ets2.json");
-    public static Ets2Settings LoadEts2() => Load<Ets2Settings>(Ets2Path) ?? new Ets2Settings();
+    public static Ets2Settings LoadEts2() => LoadEts2Migrated();
+    private static Ets2Settings LoadEts2Migrated()
+    {
+        var s = Load<Ets2Settings>(Ets2Path);
+        if (s == null) return new Ets2Settings();
+        // A missing Version key must read as 0 (old file), not as the current default.
+        try { if (!System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Ets2Path))!.AsObject().ContainsKey("Version")) s.Version = 0; }
+        catch { s.Version = 0; }
+        s.Migrate();
+        return s;
+    }
     public static void SaveEts2(Ets2Settings s) => Save(Ets2Path, s);
 
     public static AppSettings LoadSettings() => Load<AppSettings>(SettingsPath) ?? new AppSettings();

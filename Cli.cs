@@ -8,13 +8,14 @@ public static class Cli
 {
     public static bool IsCliRun(string[] args) =>
         args.Contains("--info") || args.Contains("--apply-last") || args.Contains("--set-color")
-        || args.Contains("--ets2-sim") || args.Contains("--ets2-haptics-test") || args.Contains("--rumble-test") || args.Contains("--ets2-listen-test") || args.Contains("--ets2-auto-test");
+        || args.Contains("--ets2-sim") || args.Contains("--ets2-haptics-test") || args.Contains("--ets2-settings-test") || args.Contains("--rumble-test") || args.Contains("--ets2-listen-test") || args.Contains("--ets2-auto-test");
 
     public static int Run(string[] args)
     {
         if (args.Contains("--info")) return Info();
         if (args.Contains("--set-color")) return SetColor(args);
         if (args.Contains("--ets2-haptics-test")) return Ets2HapticsTest(args);
+        if (args.Contains("--ets2-settings-test")) { var e = ConfigStore.LoadEts2(); Console.WriteLine($"Version={e.Version} Source={e.Source} Gas={e.GasTrigger}/{e.GasTriggerLevel} Kick={e.KickdownPoint} Brake={e.BrakeTrigger}/{e.BrakeTriggerLevel} MaxSpeed={e.MaxSpeedKmh} Blinker={e.BlinkerColor}"); return 0; }
         if (args.Contains("--rumble-test")) return RumbleTest();
         if (args.Contains("--ets2-sim")) return Ets2SimRun(args);
         if (args.Contains("--ets2-listen-test")) return Ets2ListenTest(args);
@@ -183,7 +184,7 @@ public static class Cli
         var settings = new Ets2Settings { EngineRumble = true };
         var h = new Ets2Haptics();
         var totals = new SortedDictionary<string, int>();
-        int ticks = 0, rumbleSends = 0, triggerSends = 0;
+        int ticks = 0, rumbleSends = 0, triggerSends = 0, rSends = 0;
         byte lastS = 0, lastW = 0;
         TriggerEffect? lastL = null, lastR = null;
         int maxS = 0, maxW = 0;
@@ -197,7 +198,7 @@ public static class Cli
             var f = h.Update(p, true, settings, ms);
             ticks++;
             if (f.Strong != lastS || f.Weak != lastW) { rumbleSends++; lastS = f.Strong; lastW = f.Weak; }
-            if (!f.Left.SameAs(lastL) || !f.Right.SameAs(lastR)) { triggerSends++; lastL = f.Left; lastR = f.Right; }
+            if (!f.Left.SameAs(lastL) || !f.Right.SameAs(lastR)) { triggerSends++; if (!f.Right.SameAs(lastR)) rSends++; lastL = f.Left; lastR = f.Right; }
             maxS = Math.Max(maxS, f.Strong); maxW = Math.Max(maxW, f.Weak);
             L = Describe(f.Left); R = Describe(f.Right);
             foreach (var n in f.Active.Split(',', StringSplitOptions.RemoveEmptyEntries))
@@ -223,16 +224,19 @@ public static class Cli
         bool v1ok = Ets2Packet.TryParse(bytes.AsSpan(0, 36).ToArray().Select((b, i) => i == 4 ? (byte)1 : b).ToArray(), out var old) && old.Rpm == rt.Rpm && old.WheelCount == 0;
         bool v1short = Ets2Packet.TryParse(bytes.AsSpan(0, 32).ToArray().Select((b, i) => i == 4 ? (byte)1 : b).ToArray(), out _);
         Console.WriteLine($"Packet round trip v2: {v2ok}; v1/36 bytes: {v1ok}; v1/32 bytes: {v1short}");
-        string[] need = ["road", "gear", "brake", "parking", "rpm-limit", "engine", "abs"];
+        string[] need = ["road", "gear", "brake", "parking", "kickdown", "engine", "abs"];
         var missing = need.Where(n => !totals.ContainsKey(n)).ToArray();
+        bool r2static = rSends == 1 && lastR != null && lastR.Mode == 0x25 && !totals.ContainsKey("rpm-limit");
+        Console.WriteLine($"R2 static kickdown (1 send, weapon, no rpm-limit): {r2static}");
         Console.WriteLine(missing.Length == 0 ? "All features triggered." : "NOT triggered: " + string.Join(", ", missing));
-        return missing.Length == 0 && idleOk(paused) && idleOk(gone) && v2ok && v1ok && v1short ? 0 : 1;
+        return missing.Length == 0 && idleOk(paused) && idleOk(gone) && r2static && v2ok && v1ok && v1short ? 0 : 1;
     }
 
     private static string Describe(TriggerEffect e) => e.Mode switch
     {
         0x05 => "off",
         0x01 => $"cont f{e.Params[1]}",
+        0x25 => $"weapon z{e.Params[0] | e.Params[1] << 8:X} s{e.Params[2]}",
         0x26 => $"vib f{e.Params[8]}Hz",
         _ => $"mode {e.Mode:X2}",
     };

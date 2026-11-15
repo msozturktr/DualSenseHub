@@ -8,7 +8,7 @@ public sealed record HapticFrame(byte Strong, byte Weak, TriggerEffect Left, Tri
 
 /// <summary>
 /// Pure haptics computation from the telemetry packet stream and <see cref="Ets2Settings"/>: no I/O, time is passed in.
-/// Call <see cref="Update"/> at about 30 Hz. Features: road feel, gear shift kick, brake/throttle triggers, engine rumble, ABS.
+/// Call <see cref="Update"/> at about 30 Hz. Features: road feel, gear shift kick, brake trigger, throttle kickdown, engine rumble, ABS.
 /// </summary>
 public sealed class Ets2Haptics
 {
@@ -74,17 +74,13 @@ public sealed class Ets2Haptics
 
         var left = TriggerEffect.Off();
         var right = TriggerEffect.Off();
-        double lvTrig = s.TriggersLevel * PercentToUnit;
-        if (s.Triggers && p.EngineOn)
+        // R2 is a static effect (light travel, kickdown detent), so it only changes with the settings.
+        if (s.GasTrigger) { right = Kickdown(s); active.Add("kickdown"); }
+        if (s.BrakeTrigger && p.EngineOn)
         {
-            if (p.ParkingBrake) { left = TriggerEffect.Continuous(0, Force(255, lvTrig)); active.Add("parking"); }
-            else { left = TriggerEffect.Continuous(1, Force(30 + 190 * Math.Clamp(p.EffBrake, 0, 1), lvTrig)); active.Add("brake"); }
-            double r = p.RpmLimit > 0 ? p.Rpm / p.RpmLimit : 0;
-            if (r > 0.85)
-            {
-                right = TriggerEffect.Continuous(2, Force(30 + 200 * Math.Min(1, (r - 0.85) / 0.15), lvTrig));
-                active.Add("rpm-limit");
-            }
+            double lvBrake = s.BrakeTriggerLevel * PercentToUnit;
+            if (p.ParkingBrake) { left = TriggerEffect.Continuous(0, Force(255, lvBrake)); active.Add("parking"); }
+            else { left = TriggerEffect.Continuous(1, Force(30 + 190 * Math.Clamp(p.EffBrake, 0, 1), lvBrake)); active.Add("brake"); }
         }
         if (s.Abs)
         {
@@ -98,6 +94,15 @@ public sealed class Ets2Haptics
             }
         }
         return new HapticFrame(Motor(strong), Motor(weak), left, right, string.Join(",", active));
+    }
+
+    /// <summary>Weapon-style detent that builds resistance and snaps through near the end of travel; nothing before it keeps the pedal light.</summary>
+    private static TriggerEffect Kickdown(Ets2Settings s)
+    {
+        int zone = (int)Math.Round(Math.Clamp(s.KickdownPoint, 0, 100) / 100.0 * 9);
+        int start = Math.Clamp(zone, 2, 6);
+        int strength = 1 + (int)Math.Round(Math.Clamp(s.GasTriggerLevel, 0, 100) * PercentToUnit * 7);
+        return TriggerEffect.Weapon(start, start + 1, strength);
     }
 
     private void Road(Ets2Packet p, double dt)

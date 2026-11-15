@@ -1,10 +1,13 @@
 namespace DualSenseHub.Core.Ets2;
 
-public enum GradientSource { Speed, Rpm, Throttle }
+public enum GradientSource { Throttle, Speed, Rpm }
 
 /// <summary>User-configurable ETS2 rules; persisted in ets2.json.</summary>
 public sealed class Ets2Settings
 {
+    public const int CurrentVersion = 2;
+    /// <summary>Settings schema version; 0 when the file predates versioning (see <see cref="Migrate"/>).</summary>
+    public int Version { get; set; } = CurrentVersion;
     public bool Blinkers { get; set; } = true;
     public bool Brake { get; set; } = true;
     public bool EngineOff { get; set; } = true;
@@ -21,8 +24,19 @@ public sealed class Ets2Settings
     public int RoadFeelLevel { get; set; } = 60;
     public bool GearShift { get; set; } = true;
     public int GearShiftLevel { get; set; } = 60;
-    public bool Triggers { get; set; } = true;
-    public int TriggersLevel { get; set; } = 60;
+    /// <summary>R2: light accelerator with a kickdown detent; <see cref="GasTriggerLevel"/> is the detent strength.</summary>
+    public bool GasTrigger { get; set; } = true;
+    public int GasTriggerLevel { get; set; } = 60;
+    /// <summary>Kickdown position in percent of R2 travel.</summary>
+    public int KickdownPoint { get; set; } = 80;
+    /// <summary>L2: brake resistance that follows the brake input, hard when the parking brake is set.</summary>
+    public bool BrakeTrigger { get; set; } = true;
+    public int BrakeTriggerLevel { get; set; } = 60;
+    /// <summary>Legacy single trigger setting (version 1 files); read once by <see cref="Migrate"/>, never written.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Triggers { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? TriggersLevel { get; set; }
     public bool EngineRumble { get; set; }
     public int EngineRumbleLevel { get; set; } = 50;
     public bool Abs { get; set; } = true;
@@ -30,6 +44,17 @@ public sealed class Ets2Settings
     public string BlinkerColor { get; set; } = "FF8C00";
     public string BrakeColor { get; set; } = "FF0000";
     public string LowFuelColor { get; set; } = "FF5000";
+
+    /// <summary>Upgrades settings loaded from an older file in place.</summary>
+    public void Migrate()
+    {
+        if (Version >= CurrentVersion) { Triggers = null; TriggersLevel = null; return; }
+        Source = GradientSource.Throttle; // files saved before throttle existed carry a stale "Speed"
+        if (Triggers is { } t) { GasTrigger = BrakeTrigger = t; }
+        if (TriggersLevel is { } l) { GasTriggerLevel = BrakeTriggerLevel = l; }
+        Triggers = null; TriggersLevel = null;
+        Version = CurrentVersion;
+    }
 
     public static (byte R, byte G, byte B) ParseHex(string hex, (byte, byte, byte) fallback)
     {

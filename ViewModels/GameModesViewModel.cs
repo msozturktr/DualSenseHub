@@ -20,7 +20,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     private bool _loading = true;
 
     public ObservableCollection<IGameMode> Modes { get; } = [];
-    public string[] SourceOptions { get; } = ["Hız", "Devir (RPM)", "Gaz pedalı"];
+    public string[] SourceOptions { get; } = ["Gaz pedalı", "Hız", "Devir (RPM)"];
 
     [ObservableProperty] private IGameMode? _selected;
     [ObservableProperty] private bool _isRunning;
@@ -44,8 +44,11 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _roadFeelLevel;
     [ObservableProperty] private bool _gearShift;
     [ObservableProperty] private double _gearShiftLevel;
-    [ObservableProperty] private bool _triggers;
-    [ObservableProperty] private double _triggersLevel;
+    [ObservableProperty] private bool _gasTrigger;
+    [ObservableProperty] private double _gasTriggerLevel;
+    [ObservableProperty] private double _kickdownPoint;
+    [ObservableProperty] private bool _brakeTrigger;
+    [ObservableProperty] private double _brakeTriggerLevel;
     [ObservableProperty] private bool _engineRumble;
     [ObservableProperty] private double _engineRumbleLevel;
     [ObservableProperty] private bool _abs;
@@ -67,7 +70,8 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
         BlinkerColor = s.BlinkerColor; BrakeColor = s.BrakeColor; LowFuelColor = s.LowFuelColor;
         RoadFeel = s.RoadFeel; RoadFeelLevel = s.RoadFeelLevel;
         GearShift = s.GearShift; GearShiftLevel = s.GearShiftLevel;
-        Triggers = s.Triggers; TriggersLevel = s.TriggersLevel;
+        GasTrigger = s.GasTrigger; GasTriggerLevel = s.GasTriggerLevel; KickdownPoint = s.KickdownPoint;
+        BrakeTrigger = s.BrakeTrigger; BrakeTriggerLevel = s.BrakeTriggerLevel;
         EngineRumble = s.EngineRumble; EngineRumbleLevel = s.EngineRumbleLevel;
         Abs = s.Abs; AbsLevel = s.AbsLevel;
         _loading = false;
@@ -97,8 +101,11 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     partial void OnRoadFeelLevelChanged(double value) => Edit(s => s.RoadFeelLevel = (int)Math.Round(value));
     partial void OnGearShiftChanged(bool value) => Edit(s => s.GearShift = value);
     partial void OnGearShiftLevelChanged(double value) => Edit(s => s.GearShiftLevel = (int)Math.Round(value));
-    partial void OnTriggersChanged(bool value) => Edit(s => s.Triggers = value);
-    partial void OnTriggersLevelChanged(double value) => Edit(s => s.TriggersLevel = (int)Math.Round(value));
+    partial void OnGasTriggerChanged(bool value) => Edit(s => s.GasTrigger = value);
+    partial void OnGasTriggerLevelChanged(double value) => Edit(s => s.GasTriggerLevel = (int)Math.Round(value));
+    partial void OnKickdownPointChanged(double value) => Edit(s => s.KickdownPoint = (int)Math.Round(value));
+    partial void OnBrakeTriggerChanged(bool value) => Edit(s => s.BrakeTrigger = value);
+    partial void OnBrakeTriggerLevelChanged(double value) => Edit(s => s.BrakeTriggerLevel = (int)Math.Round(value));
     partial void OnEngineRumbleChanged(bool value) => Edit(s => s.EngineRumble = value);
     partial void OnEngineRumbleLevelChanged(double value) => Edit(s => s.EngineRumbleLevel = (int)Math.Round(value));
     partial void OnAbsChanged(bool value) => Edit(s => s.Abs = value);
@@ -155,7 +162,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
         if (p.Hazard) on.Add("Dörtlü");
         if (p.Brake) on.Add("Fren");
         if (p.Paused) on.Add("Duraklatıldı");
-        Readout = $"Hız: {p.SpeedKmh:F0} km/h   Devir: {p.Rpm:F0}/{p.RpmLimit:F0}   Gaz: %{p.Throttle * 100:F0}\n" +
+        Readout = $"Hız: {p.SpeedKmh:F0} km/h   Devir: {p.Rpm:F0}/{p.RpmLimit:F0}   Gaz: %{p.ColorThrottle * 100:F0}\n" +
                   $"Yakıt: {p.Fuel:F0}/{p.FuelCapacity:F0} L (%{p.FuelFraction * 100:F0})   Motor: {(p.EngineOn ? "açık" : "kapalı")}\n" +
                   $"Aktif: {(on.Count == 0 ? "-" : string.Join(", ", on))}   Paket #{p.Seq}";
     }
