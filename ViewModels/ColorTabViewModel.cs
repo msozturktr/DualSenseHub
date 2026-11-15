@@ -195,6 +195,6 @@ public sealed partial class ColorTabViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _saveTimer.Dispose();
-        if (_app.HasSaved || !_loading) PersistLast();
+        if (_app.HasSaved) PersistLast();
     }
 }

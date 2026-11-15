@@ -1,15 +1,21 @@
 using DualSenseHub.Core;
+using DualSenseHub.Core.Ets2;
 
 namespace DualSenseHub;
 
-/// <summary>Headless commands: --info and --apply-last.</summary>
+/// <summary>Headless commands: --info, --apply-last, --set-color RRGGBB, --ets2-sim, --ets2-listen-test.</summary>
 public static class Cli
 {
-    public static bool IsCliRun(string[] args) => args.Contains("--info") || args.Contains("--apply-last");
+    public static bool IsCliRun(string[] args) =>
+        args.Contains("--info") || args.Contains("--apply-last") || args.Contains("--set-color")
+        || args.Contains("--ets2-sim") || args.Contains("--ets2-listen-test");
 
     public static int Run(string[] args)
     {
         if (args.Contains("--info")) return Info();
+        if (args.Contains("--set-color")) return SetColor(args);
+        if (args.Contains("--ets2-sim")) return Ets2SimRun(args);
+        if (args.Contains("--ets2-listen-test")) return Ets2ListenTest(args);
         return ApplyLast(args);
     }
 
@@ -83,5 +89,54 @@ public static class Cli
         if (svc.PermissionDenied) { Console.Error.WriteLine("Permission denied; run scripts/install-udev.sh."); return 2; }
         Console.WriteLine($"Applied lightbar {r} {g} {b}.");
         return 0;
+    }
+
+    private static int SetColor(string[] args)
+    {
+        int i = Array.IndexOf(args, "--set-color");
+        string hex = i + 1 < args.Length ? args[i + 1] : "";
+        var (r, g, b) = Ets2Settings.ParseHex(hex, (0, 0, 0));
+        if (hex.TrimStart('#').Length != 6 || !int.TryParse(hex.TrimStart('#'), System.Globalization.NumberStyles.HexNumber, null, out _))
+        { Console.Error.WriteLine("Usage: --set-color RRGGBB"); return 64; }
+
+        using var svc = new ControllerService();
+        svc.Poll();
+        if (!svc.Connected) { Console.Error.WriteLine("No DualSense controller found."); return 1; }
+        Console.WriteLine($"Controller: {svc.Current!.ModelName} via {svc.Current.Connection}, hidraw {(svc.Hid != null ? "open" : "NOT open: " + svc.HidError)}, sysfs LED {(svc.Current.LightbarLed ?? "none")}");
+        svc.SetLightbar(r, g, b);
+        bool raw = svc.Hid != null && svc.Hid.Send(OutputGroups.Lightbar);
+        Console.WriteLine($"Set lightbar {r} {g} {b}. sysfs writable: {(svc.Current.LightbarLed != null && !svc.PermissionDenied ? "yes" : "no")}; raw hidraw output report ({(svc.Current.Connection == ConnectionType.Bluetooth ? "0x31 + CRC32" : "0x02")}) write: {(raw ? "OK" : "FAILED")}.");
+        return raw || (svc.Current.LightbarLed != null && !svc.PermissionDenied) ? 0 : 2;
+    }
+
+    private static int Ets2SimRun(string[] args)
+    {
+        int secs = 15;
+        foreach (var a in args) if (a.StartsWith("--seconds=") && int.TryParse(a[10..], out var s)) secs = s;
+        Console.WriteLine($"Sending simulated ETS2 packets to 127.0.0.1:{Ets2Packet.Port} for {secs} s...");
+        Ets2Sim.RunAsync(secs).GetAwaiter().GetResult();
+        return 0;
+    }
+
+    private static int Ets2ListenTest(string[] args)
+    {
+        int secs = 3;
+        foreach (var a in args) if (a.StartsWith("--seconds=") && int.TryParse(a[10..], out var s)) secs = s;
+        using var l = new Ets2TelemetryListener();
+        int count = 0;
+        long lastPrint = 0;
+        l.PacketReceived += p =>
+        {
+            count++;
+            long now = Environment.TickCount64;
+            if (now - lastPrint < 400) return;
+            lastPrint = now;
+            Console.WriteLine($"#{p.Seq} flags=0x{p.Flags:X2} L={p.LeftBlinker} R={p.RightBlinker} haz={p.Hazard} brake={p.Brake} eng={p.EngineOn} speed={p.SpeedKmh:F1}km/h rpm={p.Rpm:F0}/{p.RpmLimit:F0} fuel={p.Fuel:F0}/{p.FuelCapacity:F0}");
+        };
+        l.Start();
+        if (l.Error != null) { Console.Error.WriteLine("Listen failed: " + l.Error); return 1; }
+        Thread.Sleep(secs * 1000);
+        Console.WriteLine($"Received {count} packets in {secs} s; connected={l.Connected}.");
+        return count > 0 ? 0 : 1;
     }
 }

@@ -1,11 +1,49 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DualSenseHub.ViewModels"
+             xmlns:core="using:DualSenseHub.Core"
              x:Class="DualSenseHub.Views.GameModesTabView"
              x:DataType="vm:GameModesViewModel">
-    <StackPanel Margin="24" Spacing="10">
-        <TextBlock Text="Oyun Modları" FontSize="20" FontWeight="SemiBold" />
-        <TextBlock Text="Henüz kayıtlı bir oyun modu yok. Euro Truck Simulator 2 desteği (SCS telemetri) sonraki aşamada burada görünecek."
-                   TextWrapping="Wrap" Opacity="0.75" IsVisible="{Binding IsEmpty}" />
-    </StackPanel>
+    <ScrollViewer>
+        <StackPanel Margin="24" Spacing="12" MaxWidth="720" HorizontalAlignment="Left">
+            <TextBlock Text="Oyun Modları" FontSize="20" FontWeight="SemiBold" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding Selected}" MinWidth="260">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="core:IGameMode"><TextBlock Text="{Binding Name}" /></DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <Button Content="{Binding ButtonText}" Command="{Binding ToggleCommand}" MinWidth="100" />
+            </StackPanel>
+            <TextBlock Text="{Binding ConnectionText}" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding Readout}" FontFamily="monospace" />
+
+            <StackPanel Spacing="8" IsVisible="{Binding IsEts2Selected}">
+                <TextBlock Text="Kurallar" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,0" />
+                <TextBlock Text="Öncelik: sinyal &gt; fren &gt; motor kapalı &gt; düşük yakıt &gt; hız/devir geçişi." Opacity="0.7" TextWrapping="Wrap" />
+                <Grid ColumnDefinitions="260,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="6">
+                    <CheckBox Grid.Row="0" Content="Sinyal / dörtlü (turuncu, yanıp sönme + sol/sağ LED)" IsChecked="{Binding Blinkers}" />
+                    <TextBox Grid.Row="0" Grid.Column="2" Text="{Binding BlinkerColor}" Width="90" Watermark="RRGGBB" />
+                    <CheckBox Grid.Row="1" Content="Fren (kırmızı)" IsChecked="{Binding Brake}" />
+                    <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding BrakeColor}" Width="90" Watermark="RRGGBB" />
+                    <CheckBox Grid.Row="2" Content="Motor kapalıyken ışık kapalı" IsChecked="{Binding EngineOff}" />
+                    <CheckBox Grid.Row="3" Content="Düşük yakıt (&lt;%15, dururken nabız)" IsChecked="{Binding LowFuel}" />
+                    <TextBox Grid.Row="3" Grid.Column="2" Text="{Binding LowFuelColor}" Width="90" Watermark="RRGGBB" />
+                    <CheckBox Grid.Row="4" Content="Yeşil → kırmızı geçişi" IsChecked="{Binding Gradient}" />
+                    <ComboBox Grid.Row="4" Grid.Column="2" ItemsSource="{Binding SourceOptions}" SelectedIndex="{Binding SourceIndex}" Width="130" />
+                    <CheckBox Grid.Row="5" Content="Oyun duraklatılınca karart" IsChecked="{Binding DimWhenPaused}" />
+                </Grid>
+
+                <Border Background="#14808080" CornerRadius="6" Padding="12" Margin="0,8,0,0">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Kurulum notları" FontWeight="SemiBold" />
+                        <TextBlock TextWrapping="Wrap" Opacity="0.85"
+                                   Text="1) ./scripts/install-ets2-plugin.sh ile eklentiyi oyun klasörüne kurun. 2) Oyunu başlatın; ilk açılışta eklentiyi onaylayın. 3) Burada Başlat'a basın." />
+                        <TextBlock TextWrapping="Wrap" Opacity="0.85"
+                                   Text="Işıklar oyunun kendi ayarıyla çakışıyorsa (renk sıfırlanıyor/titriyor) Steam'de ETS2 için Steam Girdisi'ni (Steam Input) devre dışı bırakın: Özellikler → Denetleyici → Steam Girdisini Devre Dışı Bırak." />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
 </UserControl>

@@ -51,6 +51,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         Color.Dispose();
         Device.Dispose();
+        Games.Dispose();
         _engine.Dispose();
         _service.Dispose();
     }

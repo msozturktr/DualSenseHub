@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using DualSenseHub.Core.Ets2;
 
 namespace DualSenseHub.Core;
 
@@ -64,6 +65,10 @@ public static class ConfigStore
 
     private static string SettingsPath => System.IO.Path.Combine(Dir, "settings.json");
     private static string ProfilesPath => System.IO.Path.Combine(Dir, "profiles.json");
+
+    private static string Ets2Path => System.IO.Path.Combine(Dir, "ets2.json");
+    public static Ets2Settings LoadEts2() => Load<Ets2Settings>(Ets2Path) ?? new Ets2Settings();
+    public static void SaveEts2(Ets2Settings s) => Save(Ets2Path, s);
 
     public static AppSettings LoadSettings() => Load<AppSettings>(SettingsPath) ?? new AppSettings();
     public static void SaveSettings(AppSettings s) => Save(SettingsPath, s);
