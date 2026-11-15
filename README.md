@@ -49,10 +49,15 @@ Oyun Modları sekmesindeki "Titreşim ve tetikler" bölümünde her özellik ayr
 
 Duraklatma, bağlantı kopması veya mod durması titreşimi sıfırlar ve tetikleri serbest bırakır. Titreşim en fazla ~30 Hz güncellenir, yalnızca değer değişince (veya sıfırdan farklıysa 500 ms'de bir) gönderilir. Eklentiyi güncelledikten sonra `./scripts/install-ets2-plugin.sh` ile yeniden kurun (paket sürümü 2). Not: ETS2'nin kendi kontrolcü titreşimi bununla çakışabilir; oyunun kontrol seçeneklerinden "Force feedback / titreşim" ayarını kapatın. Tetik ve titreşim çıktıları henüz gerçek donanımda ve oyunda denenmedi. Paket biçimi: `ets2-plugin/PROTOCOL.md`.
 
-## Açılışta rengi geri yükleme
+## Kurulum, sistem tepsisi ve otomatik başlatma
 
-1. Derleyip yayınlayın: `dotnet publish -c Release -o ~/.local/share/dualsensehub` ve `ln -sf ~/.local/share/dualsensehub/DualSenseHub ~/.local/bin/dualsensehub`.
-2. `cp packaging/dualsensehub-restore.service ~/.config/systemd/user/` ardından `systemctl --user enable --now dualsensehub-restore.service`.
+`./scripts/install.sh` (sudo gerekmez; tekrar çalıştırılabilir): `dotnet publish -c Release` ile `~/.local/share/dualsensehub/` altına yayınlar, `~/.local/bin/dualsensehub` bağlantısını, uygulama menüsü girdisini (simge dahil) ve oturum açılışında `dualsensehub --tray` başlatan `~/.config/autostart/dualsensehub.desktop` dosyasını oluşturur. Kaldırmak için `./scripts/uninstall.sh` (ayarlar korunur).
+
+- **Tepsi simgesi** (StatusNotifierItem): sol tık pencereyi açar; menü: Aç, Renk profilleri (kayıtlı profili uygular), "ETS2 otomatik başlat" anahtarı, Çıkış.
+- Pencereyi kapatmak uygulamayı tepsiye gizler; yalnızca **Çıkış** kapatır (ETS2 modu durdurulur, titreşim/tetikler sıfırlanır).
+- `--tray` veya `--minimized` ile pencere açılmadan tepside başlar.
+- Tek örnek: ikinci kez başlatılırsa çalışan örneğin penceresi açılır ve yeni süreç çıkar (`$XDG_RUNTIME_DIR/dualsensehub.sock`).
+- Oturum açılışındaki otomatik başlatma, eski `dualsensehub-restore.service` yerine geçer (uygulama açıkken son renk, "açılışta geri yükle" ayarına göre uygulanır); o servisi kurmanız gerekmez.
 
 Ayarlar ve profiller `~/.config/dualsensehub/` altında JSON olarak tutulur.
 
