@@ -13,14 +13,18 @@ public sealed record HapticFrame(byte Strong, byte Weak, TriggerEffect Left, Tri
 public sealed class Ets2Haptics
 {
     private const double DecayMs = 150;       // road pulse envelope time constant
-    private const double DeflectionDeadzone = 0.04; // m/s of suspension velocity ignored (flat road)
-    private const double DeflectionFull = 0.5;      // m/s that maps to a full pulse
+    private const double DeflectionDeadzone = 0.12; // m/s above the wheel's own running baseline that is ignored (flat road)
+    private const double DeflectionFull = 0.8;      // m/s above baseline that maps to a full pulse
+    private const double BaselineTau = 1.0;         // s, running average of suspension speed (normal body motion)
+    private const double MinRoadSpeedKmh = 5, MinAirborneS = 0.3, MinDt = 0.033;
     private const long KickMs = 80, AbsHoldMs = 120;
     private const double PercentToUnit = 0.01;
 
     private readonly float[] _prevSusp = new float[Ets2Packet.MaxWheels];
     private readonly bool[] _spun = new bool[Ets2Packet.MaxWheels]; // wheel was seen rotating freely, so its data is trustworthy
     private byte _prevGround;
+    private readonly double[] _suspBase = new double[Ets2Packet.MaxWheels];
+    private readonly double[] _airS = new double[Ets2Packet.MaxWheels];
     private bool _hasPrev;
     private long _lastSeq = -1, _lastPktMs, _lastTickMs;
     private double _envL, _envR;
@@ -128,12 +132,23 @@ public sealed class Ets2Haptics
     {
         if (p.Susp == null || p.WheelCount == 0) return;
         bool sidesKnown = p.LeftMask != 0 && p.LeftMask != (1 << p.WheelCount) - 1;
+        bool moving = p.SpeedKmh >= MinRoadSpeedKmh;
+        dt = Math.Max(dt, MinDt); // back-to-back packets (flag changes) would otherwise amplify tiny deltas
+        double a = Math.Min(1, dt / BaselineTau);
         for (int i = 0; i < p.WheelCount && i < Ets2Packet.MaxWheels; i++)
         {
             bool now = (p.GroundMask >> i & 1) != 0, was = (_prevGround >> i & 1) != 0;
             double x = 0;
-            if (now && was) x = Math.Clamp((Math.Abs(p.Susp[i] - _prevSusp[i]) / dt - DeflectionDeadzone) / (DeflectionFull - DeflectionDeadzone), 0, 1);
-            else if (now && !was) x = 0.9; // landing
+            if (now && was)
+            {
+                // Pulse only on suspension speed well above this wheel's normal motion, so steady body sway never buzzes.
+                double v = Math.Abs(p.Susp[i] - _prevSusp[i]) / dt;
+                double excess = v - _suspBase[i];
+                _suspBase[i] += (v - _suspBase[i]) * a;
+                if (moving) x = Math.Clamp((excess - DeflectionDeadzone) / (DeflectionFull - DeflectionDeadzone), 0, 1);
+            }
+            else if (now && !was && moving && _airS[i] >= MinAirborneS) x = 0.9; // real landing, not a lift axle or flicker
+            _airS[i] = now ? 0 : _airS[i] + dt;
             if (x <= 0) continue;
             bool isLeft = (p.LeftMask >> i & 1) != 0;
             if (!sidesKnown || isLeft) _envL = Math.Max(_envL, x);

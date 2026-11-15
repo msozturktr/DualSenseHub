@@ -187,7 +187,8 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
         if (p.Paused) on.Add("Duraklatıldı");
         Readout = $"Hız: {p.SpeedKmh:F0} km/h   Devir: {p.Rpm:F0}/{p.RpmLimit:F0}   Gaz: %{p.ColorThrottle * 100:F0}\n" +
                   $"Yakıt: {p.Fuel:F0}/{p.FuelCapacity:F0} L (%{p.FuelFraction * 100:F0})   Motor: {(p.EngineOn ? "açık" : "kapalı")}\n" +
-                  $"Aktif: {(on.Count == 0 ? "-" : string.Join(", ", on))}   Paket #{p.Seq}";
+                  $"Aktif: {(on.Count == 0 ? "-" : string.Join(", ", on))}   Paket #{p.Seq}\n" +
+                  $"Titreşim: {_ets2.LastHaptics}";
     }
 
     /// <summary>Plain-text state for <c>dualsensehub --status</c>.</summary>

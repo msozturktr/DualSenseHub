@@ -30,6 +30,8 @@ public sealed class Ets2Mode : IGameMode, IDisposable
     public Ets2TelemetryListener Listener => _listener;
     public bool Running => _out != null;
     public bool Connected => _listener.Connected;
+    /// <summary>Latest haptic frame summary for the live readout (which feature is buzzing).</summary>
+    public string LastHaptics { get; private set; } = "";
 
     public void Start(ILightOutput output)
     {
@@ -70,6 +72,7 @@ public sealed class Ets2Mode : IGameMode, IDisposable
     {
         long now = _clock.ElapsedMilliseconds;
         var f = _haptics.Update(_listener.Latest, _listener.Connected, Settings, now);
+        LastHaptics = $"motor {f.Strong}/{f.Weak} · {f.Active}";
         bool changed = f.Strong != _lastStrong || f.Weak != _lastWeak;
         if (changed || (f.Strong | f.Weak) != 0 && now - _lastRumbleMs >= RumbleKeepaliveMs)
         {
