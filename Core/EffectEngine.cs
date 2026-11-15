@@ -25,7 +25,7 @@ public sealed class EffectEngine : IDisposable
         {
             _settings = s.Clone();
             _last = null;
-            _timer.Change(0, s.Effect == LightEffect.Static ? Timeout.Infinite : s.Effect == LightEffect.Battery ? 1000 : 33);
+            _timer.Change(0, s.Effect is LightEffect.Static or LightEffect.Battery ? 1000 : 33);
         }
     }
 
@@ -50,7 +50,7 @@ public sealed class EffectEngine : IDisposable
         var c = Compute(s, _clock.Elapsed.TotalSeconds, _service.BatteryPercent);
         lock (_lock)
         {
-            if (_last == c) return;
+            if (_last == c && s.Effect is not (LightEffect.Static or LightEffect.Battery)) return; // slow effects re-assert so Steam cannot override for long
             _last = c;
         }
         _service.SetLightbar(c.Item1, c.Item2, c.Item3);
