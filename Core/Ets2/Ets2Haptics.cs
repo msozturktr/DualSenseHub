@@ -25,7 +25,7 @@ public sealed class Ets2Haptics
     private const double BaselineTau = 1.0;         // s, running average of suspension speed (normal body motion)
     private const double MinRoadSpeedKmh = 5, MinAirborneS = 0.3, MinDt = 0.033;
     private const long KickMs = 45, AbsHoldMs = 120;
-    private const double GearKickPeak = 0.35;        // weak (high-frequency) motor only, a light tick rather than a thump
+    private const double GearKickPeak = 0.35;        // strong motor (both sides of the grip), kept short so it reads as a tick
     private const double RoadStrongScale = 0.7, RoadWeakScale = 0.8;
     private const double RoadMinOutput = 0.12;       // pulses that would end up below this read as constant buzz
     private const long RoadRefractoryMs = 120;       // minimum gap between new pulses per side so they read as discrete bumps
