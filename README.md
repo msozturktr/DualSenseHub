@@ -1,68 +1,69 @@
 # DualSense Hub
 
-Linux için DualSense (PS5) denetleyici yöneticisi: ışık çubuğu renk/efektleri, oyuncu ve mikrofon LED'leri, cihaz bilgisi, canlı giriş testi, titreşim ve uyarlanabilir tetik testi. C# + Avalonia UI, .NET 10.
+[Türkçe](README.tr.md)
 
-## Kurulum
+A Linux control center for the Sony DualSense (PS5) controller, with an Euro Truck Simulator 2 game mode.
 
-1. Gereksinimler: .NET 10 SDK, `hid_playstation` çekirdek sürücüsü (modern çekirdeklerde hazır).
-2. Erişim izni (bir kez, sudo gerekir):
-   ```
-   ./scripts/install-udev.sh
-   ```
-   Ardından denetleyiciyi çıkarıp yeniden bağlayın. İzin yoksa uygulama üstte kırmızı bir uyarı gösterir.
-3. Çalıştırma:
-   ```
-   dotnet run
-   ```
+- **Lightbar:** any color, brightness, presets, profiles and effects (static, breathing, rainbow, blink, battery-level color)
+- **Player and mic LEDs**
+- **Device info:** battery, connection type (USB/Bluetooth), MAC, firmware/hardware versions
+- **Live input test:** buttons, sticks, triggers, gyro/accelerometer, touchpad; rumble and adaptive trigger tests
+- **ETS2 mode:** turn signals blink the lightbar amber and light the matching side's player LEDs, brake turns it red, color follows how hard you press the throttle, plus haptics: road feel, gear-shift kick, brake trigger resistance, kickdown detent on the throttle trigger, ABS/wheel-lock trigger vibration and optional engine rumble
+- **System tray** app with autostart; ETS2 mode starts automatically when the game is detected
 
-## Komut satırı
+Built with C# + Avalonia UI (.NET 10). Talks to the controller through the kernel `hid_playstation` driver (sysfs) and raw hidraw output reports (USB and Bluetooth, with CRC32).
 
-- `dotnet run -- --info`: bulunan cihazın yollarını, bataryayı ve (hidraw okunabiliyorsa) yazılım bilgisini yazdırır.
-- `dotnet run -- --set-color RRGGBB`: ışık çubuğunu verilen renge ayarlar ve çıkar.
-- `dotnet run -- --ets2-sim [--seconds=15]`: oyun olmadan sahte ETS2 paketleri gönderir (boşta, sol, sağ, dörtlü, fren döngüsü).
-- `dotnet run -- --ets2-haptics-test [--seconds=30]`: sahte paketleri doğrudan titreşim/tetik hesabından geçirip özet yazdırır (denetleyici ve UDP gerekmez).
-- `dotnet run -- --rumble-test`: gerçek denetleyicide ~200 ms'lik tek bir titreşim gönderir ve yazmanın başarılı olup olmadığını bildirir.
-- `dotnet run -- --ets2-listen-test [--seconds=3]`: UDP 47555'i dinleyip çözülen paketleri yazdırır.
-- `dotnet run -- --apply-last [--wait=15]`: kayıtlı rengi arayüzsüz uygular ve çıkar. Animasyonlu efektler için ilk kare/anlık renk uygulanır.
+## Install
 
-## ETS2 (Euro Truck Simulator 2) modu
+Requirements: .NET 10 SDK, a kernel with `hid_playstation` (any modern distro).
 
-Oyundaki sinyal, dörtlü, fren, motor, hız/devir ve yakıt durumuna göre ışık çubuğu ve oyuncu LED'leri değişir.
+```bash
+git clone https://github.com/msozturktr/DualSenseHub.git
+cd DualSenseHub
+./scripts/install-udev.sh   # once, needs sudo: lets your user access the controller
+./scripts/install.sh        # user-level: publishes to ~/.local/share/dualsensehub, adds menu entry + autostart
+```
 
-1. Eklentiyi derleyin (clang + lld + llvm-dlltool gerekir, mingw gerekmez): `./ets2-plugin/build.sh`
-2. Oyun klasörüne kurun: `./scripts/install-ets2-plugin.sh` (`bin/win_x64/plugins/` altına kopyalar; farklı yol için `ETS2_DIR=...`).
-3. Oyunu başlatın; eklenti ilk açılışta onay sorabilir ("Advanced SDK features" uyarısı), onaylayın.
-4. Uygulamada Oyun Modları sekmesinde "Euro Truck Simulator 2" seçip Başlat'a basın. Bağlantı "Bağlı" olunca ışıklar oyuna tepki verir.
-5. Işıklar sürekli sıfırlanıyor veya titriyorsa Steam'de ETS2 için Steam Girdisi'ni (Steam Input) devre dışı bırakın.
+Reconnect the controller after installing the udev rule. Then launch **DualSense Hub** from your app menu (or run `dualsensehub`). Closing the window keeps it in the tray; use **Çıkış** (Exit) in the tray menu to quit. Re-running `install.sh` updates the app and restarts the running instance. `./scripts/uninstall.sh` removes it (settings in `~/.config/dualsensehub/` are kept).
 
-Kurallar (öncelik sırasıyla): sinyal/dörtlü (turuncu, oyunla eşzamanlı yanıp söner, sol/sağ LED'ler) > fren (kırmızı) > motor kapalı (ışık kapalı) > düşük yakıt (<%15, dururken turuncu nabız) > hız veya devirle yeşil→kırmızı geçiş. Duraklatılınca ışık kısılır. Her kural açılıp kapatılabilir, renkler RRGGBB olarak düzenlenir; ayarlar `~/.config/dualsensehub/ets2.json` içindedir. Test için oyun olmadan `--ets2-sim` kullanın (artık vites değişimi, tümsek, iniş, fren kilitlenmesi ve devir taraması da içerir).
+## ETS2 mode
 
-### Titreşim ve tetikler
+ETS2 data comes from a small SCS Telemetry SDK plugin that sends UDP packets to `127.0.0.1:47555`. It is built as a Windows DLL (works with the Proton version of the game) using clang + lld + llvm-dlltool, no MinGW needed.
 
-Oyun Modları sekmesindeki "Titreşim ve tetikler" bölümünde her özellik ayrı açılıp kapatılır ve %0-100 şiddet kaydırıcısı vardır (ayarlar `ets2.json` içinde):
+```bash
+./scripts/install-ets2-plugin.sh   # builds if needed and copies the DLL to the game's bin/win_x64/plugins/
+```
 
-- **Yol hissi**: tekerlek süspansiyon hızındaki ani değişimler kısa titreşim darbesi olur (sol tekerlekler sol/güçlü motor, sağ tekerlekler sağ/zayıf motor); havadan yere iniş de darbe verir. Düz yolda ölü bölge sayesinde titreşim yoktur.
-- **Vites geçişi**: vites değişince ~80 ms'lik kısa vuruş (nötr geçişleri sayılmaz).
-- **Tetikler**: L2 fren pedalına göre direnç kazanır, el freni çekiliyken sert/kilitli hissi verir; R2 devir sınırına (%85 üstü) yaklaştıkça sertleşir. Efekt yalnızca değiştiğinde gönderilir.
-- **ABS / tekerlek kilitlenmesi**: fren sırasında bir tekerleğin yüzey hızı araç hızından çok düşükse L2 titrer (hafif titreşim de eklenir). SDK'da ABS kanalı olmadığı için kilitlenme tekerlek hızından çıkarılır.
-- **Motor uğultusu**: motor açıkken devirle orantılı hafif düşük titreşim; varsayılan kapalı.
+Set `ETS2_DIR=...` if the game is not in the default Steam library. Start the game and accept the "advanced SDK features" prompt. The app detects the game and starts the mode automatically (toggle in the **Oyun Modları** / Game Modes tab). Every rule and haptic effect can be switched on/off and its strength adjusted there. Packet format: [ets2-plugin/PROTOCOL.md](ets2-plugin/PROTOCOL.md).
 
-Duraklatma, bağlantı kopması veya mod durması titreşimi sıfırlar ve tetikleri serbest bırakır. Titreşim en fazla ~30 Hz güncellenir, yalnızca değer değişince (veya sıfırdan farklıysa 500 ms'de bir) gönderilir. Eklentiyi güncelledikten sonra `./scripts/install-ets2-plugin.sh` ile yeniden kurun (paket sürümü 2). Not: ETS2'nin kendi kontrolcü titreşimi bununla çakışabilir; oyunun kontrol seçeneklerinden "Force feedback / titreşim" ayarını kapatın. Tetik ve titreşim çıktıları henüz gerçek donanımda ve oyunda denenmedi. Paket biçimi: `ets2-plugin/PROTOCOL.md`.
+Restart the game after updating the plugin.
 
-## Kurulum, sistem tepsisi ve otomatik başlatma
+## Steam
 
-`./scripts/install.sh` (sudo gerekmez; tekrar çalıştırılabilir): `dotnet publish -c Release` ile `~/.local/share/dualsensehub/` altına yayınlar, `~/.local/bin/dualsensehub` bağlantısını, uygulama menüsü girdisini (simge dahil) ve oturum açılışında `dualsensehub --tray` başlatan `~/.config/autostart/dualsensehub.desktop` dosyasını oluşturur. Kaldırmak için `./scripts/uninstall.sh` (ayarlar korunur).
+While Steam is running it may take over the controller and override the lightbar. If colors don't stick, disable Steam Input for PlayStation controllers (or for ETS2 in the game's controller properties). ETS2's own controller vibration can also conflict with the haptics; turn it off in the game options.
 
-- **Tepsi simgesi** (StatusNotifierItem): sol tık pencereyi açar; menü: Aç, Renk profilleri (kayıtlı profili uygular), "ETS2 otomatik başlat" anahtarı, Çıkış.
-- Pencereyi kapatmak uygulamayı tepsiye gizler; yalnızca **Çıkış** kapatır (ETS2 modu durdurulur, titreşim/tetikler sıfırlanır).
-- `--tray` veya `--minimized` ile pencere açılmadan tepside başlar.
-- Tek örnek: ikinci kez başlatılırsa çalışan örneğin penceresi açılır ve yeni süreç çıkar (`$XDG_RUNTIME_DIR/dualsensehub.sock`).
-- Oturum açılışındaki otomatik başlatma, eski `dualsensehub-restore.service` yerine geçer (uygulama açıkken son renk, "açılışta geri yükle" ayarına göre uygulanır); o servisi kurmanız gerekmez.
+## Command line
 
-Ayarlar ve profiller `~/.config/dualsensehub/` altında JSON olarak tutulur.
+| Command | What it does |
+|---|---|
+| `dualsensehub --status` | State of the running instance (UDP listener, packet count, connection, mode) |
+| `dualsensehub --info` | Detected device paths, battery, firmware |
+| `dualsensehub --set-color RRGGBB` | Set the lightbar and exit |
+| `dualsensehub --apply-last` | Apply the saved color without UI |
+| `dualsensehub --tray` | Start hidden in the tray |
+| `dualsensehub --quit` | Quit the running instance |
+| `--ets2-sim`, `--ets2-listen-test`, `--ets2-haptics-test`, `--rumble-test` | Development/testing helpers |
 
-## Sınırlamalar
+From the source tree use `dotnet run -- <args>`.
 
-- Donanım sürümü ve yazılım sürümü ham sayı olarak gösterilir.
-- ETS2 modu henüz gerçek oyunda denenmedi; ilk açılışta eklentinin yüklendiğini oyunun konsol/günlük çıktısından doğrulayın.
-- Tetik efekt parametreleri topluluk belgelerine dayanır; farklı donanım sürümlerinde his değişebilir.
+## Notes
+
+- Lightbar control: the controller only accepts host colors after a one-time "lightbar setup" (`LIGHT_OUT`) command; the app sends it once per connection.
+- Adaptive trigger parameters are based on community documentation and may feel different across hardware revisions.
+- Tested on CachyOS (KDE) with a DualSense over Bluetooth.
+
+## License
+
+MIT, see [LICENSE](LICENSE). The ETS2 plugin uses hand-written declarations compatible with the SCS Telemetry SDK; see `ets2-plugin/sdk/SCS_SDK_LICENSE.txt`.
+
+Not affiliated with or endorsed by Sony Interactive Entertainment or SCS Software. "DualSense" and "PlayStation" are trademarks of Sony Interactive Entertainment.
