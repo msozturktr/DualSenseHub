@@ -46,7 +46,9 @@ public sealed class Ets2Recorder : IDisposable
             _w = new StreamWriter(path, false, new UTF8Encoding(false)) { AutoFlush = false };
             _w.WriteLine(Header());
             _haptics = new Ets2Haptics(); _clock = Stopwatch.StartNew(); _rows = 0;
-            _stopTimer = new Timer(_ => Stop(), null, Math.Max(1, seconds) * 1000L, Timeout.Infinite);
+            // Only unpaused driving counts: typing the command alt-tabs out of ETS2, which pauses the game.
+            _targetMs = Math.Max(1, seconds) * 1000L; _activeMs = 0; _lastMs = -1;
+            _stopTimer = new Timer(_ => Stop(), null, 30 * 60 * 1000L, Timeout.Infinite); // safety cap
             return path;
         }
     }
@@ -65,12 +67,19 @@ public sealed class Ets2Recorder : IDisposable
 
     private static string F(double v) => v.ToString("0.####", CultureInfo.InvariantCulture);
 
+    private long _targetMs, _activeMs, _lastMs = -1;
+
     private void OnPacket(Ets2Packet p)
     {
         lock (_gate)
         {
             if (_w == null) return;
             long now = _clock.ElapsedMilliseconds;
+            long delta = _lastMs < 0 ? 0 : now - _lastMs;
+            _lastMs = now;
+            if (p.Paused) return;
+            _activeMs += Math.Min(delta, 250);
+            if (_activeMs >= _targetMs) { StopLocked(); return; }
             var f = _haptics.Update(p, true, _settings(), now);
             var d = _haptics.Diag;
             var sb = new StringBuilder(256);
