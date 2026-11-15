@@ -58,7 +58,9 @@ public sealed class OutputState
     {
         var c = new byte[47];
         byte f0 = 0, f1 = 0, f2 = 0;
-        if (groups.HasFlag(OutputGroups.Rumble)) { f0 |= 0x03; f2 |= 0x04; c[2] = RumbleWeak; c[3] = RumbleStrong; }
+        // Reports without the rumble flags stop an ongoing rumble, so keep re-stating it while it is non-zero.
+        if (RumbleWeak != 0 || RumbleStrong != 0) groups |= OutputGroups.Rumble;
+        if (groups.HasFlag(OutputGroups.Rumble)) { f0 |= 0x03; /* compatible vibration v1; the v2 flag (valid_flag2 bit2) did nothing on this firmware */ c[2] = RumbleWeak; c[3] = RumbleStrong; }
         if (groups.HasFlag(OutputGroups.TriggerRight)) { f0 |= 0x04; c[10] = RightTrigger.Mode; Array.Copy(RightTrigger.Params, 0, c, 11, 10); }
         if (groups.HasFlag(OutputGroups.TriggerLeft)) { f0 |= 0x08; c[21] = LeftTrigger.Mode; Array.Copy(LeftTrigger.Params, 0, c, 22, 10); }
         if (groups.HasFlag(OutputGroups.Mic)) { f1 |= 0x01; c[8] = (byte)(MicLed ? 1 : 0); }
