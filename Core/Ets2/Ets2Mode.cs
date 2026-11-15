@@ -8,7 +8,7 @@ public sealed class Ets2Mode : IGameMode, IDisposable
     private const byte LeftMask = 0b00011, RightMask = 0b11000, AllMask = 0b11111;
     private const long BlinkHoldMs = 700;
 
-    private readonly Ets2TelemetryListener _listener = new();
+    private readonly Ets2TelemetryListener _listener;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private Timer? _timer;
     private ILightOutput? _out;
@@ -23,6 +23,8 @@ public sealed class Ets2Mode : IGameMode, IDisposable
     private TriggerEffect? _lastLeft, _lastRight;
     private const long RumbleKeepaliveMs = 500;
 
+    public Ets2Mode(Ets2TelemetryListener listener) { _listener = listener; }
+
     public string Name => "Euro Truck Simulator 2";
     public Ets2Settings Settings { get; set; } = new();
     public Ets2TelemetryListener Listener => _listener;
@@ -35,14 +37,12 @@ public sealed class Ets2Mode : IGameMode, IDisposable
         _hap = output as IHapticOutput;
         _last = null;
         _lastStrong = _lastWeak = 0; _lastLeft = _lastRight = null;
-        _listener.Start();
         _timer = new Timer(_ => Tick(), null, 0, 33);
     }
 
     public void Stop()
     {
         _timer?.Dispose(); _timer = null;
-        _listener.Stop();
         lock (_tickLock)
         {
             // Rumble off and triggers released when the mode stops.
@@ -142,5 +142,5 @@ public sealed class Ets2Mode : IGameMode, IDisposable
         return ((byte)(r * 255), (byte)(g * 255), 0);
     }
 
-    public void Dispose() { Stop(); _listener.Dispose(); }
+    public void Dispose() => Stop();
 }

@@ -10,6 +10,8 @@ public sealed class Ets2Settings
     public bool EngineOff { get; set; } = true;
     public bool LowFuel { get; set; } = true;
     public bool Gradient { get; set; } = true;
+    /// <summary>Start/stop the mode automatically when the game starts/stops sending packets.</summary>
+    public bool AutoStart { get; set; } = true;
     public bool DimWhenPaused { get; set; } = true;
     public GradientSource Source { get; set; } = GradientSource.Throttle;
     /// <summary>Speed (km/h) mapped to full red in speed gradient mode.</summary>

@@ -12,7 +12,9 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
 {
     private readonly ILightOutput _output;
     private readonly EffectEngine _engine;
-    private readonly Ets2Mode _ets2 = new();
+    private readonly Ets2TelemetryListener _listener = new();
+    private readonly Ets2Mode _ets2;
+    private readonly Ets2AutoStart _auto;
     private readonly DispatcherTimer _ui = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly Timer _saveTimer;
     private bool _loading = true;
@@ -32,6 +34,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _lowFuel;
     [ObservableProperty] private bool _gradient;
     [ObservableProperty] private bool _dimWhenPaused;
+    [ObservableProperty] private bool _autoStart;
     [ObservableProperty] private int _sourceIndex;
     [ObservableProperty] private string _blinkerColor = "";
     [ObservableProperty] private string _brakeColor = "";
@@ -53,12 +56,14 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     public GameModesViewModel(ILightOutput output, EffectEngine engine)
     {
         _output = output; _engine = engine;
+        _ets2 = new Ets2Mode(_listener);
+        _auto = new Ets2AutoStart(_listener, () => IsRunning, StartMode, StopMode);
         Modes.Add(_ets2);
         Selected = _ets2;
         var s = ConfigStore.LoadEts2();
         _ets2.Settings = s;
         Blinkers = s.Blinkers; Brake = s.Brake; EngineOff = s.EngineOff; LowFuel = s.LowFuel; Gradient = s.Gradient;
-        DimWhenPaused = s.DimWhenPaused; SourceIndex = (int)s.Source;
+        DimWhenPaused = s.DimWhenPaused; AutoStart = s.AutoStart; SourceIndex = (int)s.Source;
         BlinkerColor = s.BlinkerColor; BrakeColor = s.BrakeColor; LowFuelColor = s.LowFuelColor;
         RoadFeel = s.RoadFeel; RoadFeelLevel = s.RoadFeelLevel;
         GearShift = s.GearShift; GearShiftLevel = s.GearShiftLevel;
@@ -67,7 +72,10 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
         Abs = s.Abs; AbsLevel = s.AbsLevel;
         _loading = false;
         _saveTimer = new Timer(_ => ConfigStore.SaveEts2(_ets2.Settings), null, Timeout.Infinite, Timeout.Infinite);
-        _ui.Tick += (_, _) => UpdateReadout();
+        _auto.Enabled = s.AutoStart;
+        _ui.Tick += (_, _) => { _auto.Tick(); UpdateReadout(); };
+        _listener.Start();
+        _ui.Start();
     }
 
     partial void OnSelectedChanged(IGameMode? value) => IsEts2Selected = value == _ets2;
@@ -78,6 +86,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     partial void OnEngineOffChanged(bool value) => Edit(s => s.EngineOff = value);
     partial void OnLowFuelChanged(bool value) => Edit(s => s.LowFuel = value);
     partial void OnGradientChanged(bool value) => Edit(s => s.Gradient = value);
+    partial void OnAutoStartChanged(bool value) { _auto.Enabled = value; Edit(s => s.AutoStart = value); }
     partial void OnDimWhenPausedChanged(bool value) => Edit(s => s.DimWhenPaused = value);
     partial void OnSourceIndexChanged(int value) => Edit(s => s.Source = (GradientSource)Math.Clamp(value, 0, 2));
     partial void OnBlinkerColorChanged(string value) => Edit(s => s.BlinkerColor = value);
@@ -105,27 +114,41 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void Toggle()
     {
-        if (Selected is not { } mode) return;
-        if (IsRunning)
-        {
-            mode.Stop(); IsRunning = false; _ui.Stop();
-            _engine.Resume();
-            ConnectionText = "Mod durdurulmuş."; Readout = "";
-            return;
-        }
+        if (IsRunning) { _auto.NotifyManualStop(); StopMode(); }
+        else { _auto.NotifyManualStart(); StartMode(); }
+    }
+
+    private void StartMode()
+    {
+        if (IsRunning) return;
         _engine.Pause();
-        mode.Start(_output);
+        _ets2.Start(_output);
         IsRunning = true;
-        _ui.Start();
+        UpdateReadout();
+    }
+
+    private void StopMode()
+    {
+        if (!IsRunning) return;
+        _ets2.Stop(); IsRunning = false;
+        _engine.Resume();
         UpdateReadout();
     }
 
     private void UpdateReadout()
     {
-        if (_ets2.Listener.Error is { } err) { ConnectionText = $"UDP 47555 açılamadı: {err}"; Readout = ""; return; }
-        if (!_ets2.Connected) { ConnectionText = "Bağlantı yok (oyun/eklenti bekleniyor)"; Readout = ""; return; }
-        var p = _ets2.Listener.Latest;
-        ConnectionText = "Bağlı";
+        string state = _listener.Listening ? "dinleniyor" : $"port hatası: {_listener.Error ?? "başlatılıyor"}";
+        long age = _listener.LastPacketAgeMs;
+        string ageText = age < 0 ? "-" : $"{age / 1000.0:F1} sn önce";
+        string ver = _listener.ProtocolVersion == 0 ? "-" : $"v{_listener.ProtocolVersion}";
+        string info = $"UDP {Ets2Packet.Port}: {state} | paket: {_listener.PacketCount} | son paket: {ageText} | protokol: {ver}";
+        if (!_ets2.Connected)
+        {
+            ConnectionText = (_listener.Listening ? "Bağlantı yok (oyun/eklenti bekleniyor)" : "Dinleyici çalışmıyor") + "\n" + info;
+            Readout = ""; return;
+        }
+        var p = _listener.Latest;
+        ConnectionText = (IsRunning ? "Bağlı, mod çalışıyor" : "Bağlı, mod durdurulmuş") + "\n" + info;
         var on = new List<string>();
         if (p.LeftBlinker) on.Add("Sol sinyal");
         if (p.RightBlinker) on.Add("Sağ sinyal");
@@ -144,5 +167,6 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
         ConfigStore.SaveEts2(_ets2.Settings);
         if (IsRunning) _ets2.Stop();
         _ets2.Dispose();
+        _listener.Dispose();
     }
 }

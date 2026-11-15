@@ -3,54 +3,106 @@ using System.Net.Sockets;
 
 namespace DualSenseHub.Core.Ets2;
 
-/// <summary>Receives plugin datagrams on 127.0.0.1:47555 and exposes the latest packet.</summary>
+/// <summary>
+/// Receives plugin datagrams on 127.0.0.1:47555 and exposes the latest packet.
+/// A supervisor thread (re)binds the socket every 2 s on failure and survives receive errors until disposed.
+/// </summary>
 public sealed class Ets2TelemetryListener : IDisposable
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(2);
-    private UdpClient? _udp;
+    private const int RetryMs = 2000;
+    private readonly object _gate = new();
     private Thread? _thread;
+    private volatile bool _stop;
+    private Socket? _sock;
     private long _lastTicks;
+    private long _count;
+    private int _version;
+    private volatile bool _listening;
+    private volatile string? _error;
     private Ets2Packet _latest;
 
-    public string? Error { get; private set; }
-    public Ets2Packet Latest { get { lock (this) return _latest; } }
+    public string? Error => _error;
+    /// <summary>True while the socket is bound and receiving.</summary>
+    public bool Listening => _listening;
+    public long PacketCount => Interlocked.Read(ref _count);
+    /// <summary>Protocol version byte of the last packet (0 if none).</summary>
+    public int ProtocolVersion => Volatile.Read(ref _version);
+    public Ets2Packet Latest { get { lock (_gate) return _latest; } }
+    /// <summary>Milliseconds since the last valid packet, or -1 if none was ever received.</summary>
+    public long LastPacketAgeMs { get { long t = Interlocked.Read(ref _lastTicks); return t == 0 ? -1 : Environment.TickCount64 - t; } }
     /// <summary>True when a packet arrived within the last 2 seconds.</summary>
-    public bool Connected => _lastTicks != 0 && Environment.TickCount64 - Interlocked.Read(ref _lastTicks) < (long)Timeout.TotalMilliseconds;
+    public bool Connected { get { long a = LastPacketAgeMs; return a >= 0 && a < (long)Timeout.TotalMilliseconds; } }
     public event Action<Ets2Packet>? PacketReceived;
 
     public void Start(int port = Ets2Packet.Port)
     {
-        if (_udp != null) return;
-        try
+        lock (_gate)
         {
-            _udp = new UdpClient(new IPEndPoint(IPAddress.Loopback, port));
-            Error = null;
+            if (_thread != null) return;
+            _stop = false;
+            _thread = new Thread(() => Supervise(port)) { IsBackground = true, Name = "ets2-udp" };
+            _thread.Start();
         }
-        catch (Exception e) { Error = e.Message; return; }
-        var udp = _udp;
-        _thread = new Thread(() =>
+    }
+
+    private void Supervise(int port)
+    {
+        var buf = new byte[1024];
+        while (!_stop)
         {
-            var ep = new IPEndPoint(IPAddress.Any, 0);
-            while (true)
+            Socket? s = null;
+            try
             {
-                byte[] data;
-                try { data = udp.Receive(ref ep); }
-                catch { return; }
-                if (!Ets2Packet.TryParse(data, out var p)) continue;
-                lock (this) _latest = p;
-                Interlocked.Exchange(ref _lastTicks, Environment.TickCount64);
-                PacketReceived?.Invoke(p);
+                s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                s.ReceiveTimeout = 500;
+                s.Bind(new IPEndPoint(IPAddress.Loopback, port));
+                _sock = s;
+                _error = null; _listening = true;
+                EndPoint ep = new IPEndPoint(IPAddress.Any, 0);
+                int failures = 0;
+                while (!_stop)
+                {
+                    int n;
+                    try { n = s.ReceiveFrom(buf, ref ep); failures = 0; }
+                    catch (SocketException e) when (e.SocketErrorCode == SocketError.TimedOut) { continue; }
+                    catch (Exception) when (_stop) { break; }
+                    catch (Exception e)
+                    {
+                        _error = "alma hatası: " + e.Message;
+                        if (++failures >= 5) break; // rebind
+                        Thread.Sleep(100);
+                        continue;
+                    }
+                    if (!Ets2Packet.TryParse(buf.AsSpan(0, n), out var p)) continue;
+                    lock (_gate) _latest = p;
+                    Volatile.Write(ref _version, buf[4]);
+                    Interlocked.Increment(ref _count);
+                    Interlocked.Exchange(ref _lastTicks, Environment.TickCount64);
+                    try { PacketReceived?.Invoke(p); }
+                    catch (Exception e) { Console.Error.WriteLine("ETS2 PacketReceived handler failed: " + e); }
+                }
             }
-        }) { IsBackground = true, Name = "ets2-udp" };
-        _thread.Start();
+            catch (Exception e) when (!_stop) { _error = e.Message; }
+            catch (Exception) { }
+            finally
+            {
+                _listening = false; _sock = null;
+                try { s?.Dispose(); } catch { }
+            }
+            // Retry after a pause, waking early on shutdown.
+            for (int w = 0; w < RetryMs && !_stop; w += 100) Thread.Sleep(100);
+        }
     }
 
     public void Stop()
     {
-        var u = _udp; _udp = null;
-        u?.Dispose();
-        _thread?.Join(500);
-        _thread = null;
+        Thread? t;
+        lock (_gate) { _stop = true; t = _thread; _thread = null; }
+        try { _sock?.Dispose(); } catch { }
+        t?.Join(1500);
+        _listening = false;
         Interlocked.Exchange(ref _lastTicks, 0);
     }
 

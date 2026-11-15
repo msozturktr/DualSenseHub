@@ -56,10 +56,10 @@ public static class Ets2Sim
             brake, 8, gear, Wheels, ground, LeftMask, susp, vel, radius);
     }
 
-    public static async Task RunAsync(int seconds, CancellationToken ct = default)
+    public static async Task RunAsync(int seconds, CancellationToken ct = default, int port = Ets2Packet.Port)
     {
         using var udp = new UdpClient();
-        var dest = new IPEndPoint(IPAddress.Loopback, Ets2Packet.Port);
+        var dest = new IPEndPoint(IPAddress.Loopback, port);
         uint seq = 0;
         var end = DateTime.UtcNow.AddSeconds(seconds);
         var t0 = DateTime.UtcNow;

@@ -15,7 +15,8 @@
                 </ComboBox>
                 <Button Content="{Binding ButtonText}" Command="{Binding ToggleCommand}" MinWidth="100" />
             </StackPanel>
-            <TextBlock Text="{Binding ConnectionText}" FontWeight="SemiBold" />
+            <CheckBox Content="Oyun algılanınca otomatik başlat" IsChecked="{Binding AutoStart}" />
+            <TextBlock Text="{Binding ConnectionText}" FontWeight="SemiBold" TextWrapping="Wrap" />
             <TextBlock Text="{Binding Readout}" FontFamily="monospace" />
 
             <StackPanel Spacing="8" IsVisible="{Binding IsEts2Selected}">

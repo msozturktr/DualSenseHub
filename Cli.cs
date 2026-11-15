@@ -8,7 +8,7 @@ public static class Cli
 {
     public static bool IsCliRun(string[] args) =>
         args.Contains("--info") || args.Contains("--apply-last") || args.Contains("--set-color")
-        || args.Contains("--ets2-sim") || args.Contains("--ets2-haptics-test") || args.Contains("--rumble-test") || args.Contains("--ets2-listen-test");
+        || args.Contains("--ets2-sim") || args.Contains("--ets2-haptics-test") || args.Contains("--rumble-test") || args.Contains("--ets2-listen-test") || args.Contains("--ets2-auto-test");
 
     public static int Run(string[] args)
     {
@@ -18,6 +18,7 @@ public static class Cli
         if (args.Contains("--rumble-test")) return RumbleTest();
         if (args.Contains("--ets2-sim")) return Ets2SimRun(args);
         if (args.Contains("--ets2-listen-test")) return Ets2ListenTest(args);
+        if (args.Contains("--ets2-auto-test")) return Ets2AutoTest(args);
         return ApplyLast(args);
     }
 
@@ -116,8 +117,40 @@ public static class Cli
         int secs = 15;
         foreach (var a in args) if (a.StartsWith("--seconds=") && int.TryParse(a[10..], out var s)) secs = s;
         Console.WriteLine($"Sending simulated ETS2 packets to 127.0.0.1:{Ets2Packet.Port} for {secs} s...");
-        Ets2Sim.RunAsync(secs).GetAwaiter().GetResult();
+        Ets2Sim.RunAsync(secs, default, PortArg(args)).GetAwaiter().GetResult();
         return 0;
+    }
+
+    /// <summary>Runs the shared listener + auto-start logic without UI and prints the transitions.</summary>
+    private static int Ets2AutoTest(string[] args)
+    {
+        int secs = 15;
+        foreach (var a in args) if (a.StartsWith("--seconds=") && int.TryParse(a[10..], out var s)) secs = s;
+        using var l = new Ets2TelemetryListener();
+        using var mode = new Ets2Mode(l);
+        bool running = false;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        void Log(string m) => Console.WriteLine($"[{sw.Elapsed.TotalSeconds:F1}s] {m}");
+        var auto = new Ets2AutoStart(l, () => running, () => { running = true; Log("mode started"); }, () => { running = false; Log("mode stopped"); });
+        auto.Transition += t => Log(t);
+        l.Start(PortArg(args));
+        Thread.Sleep(300);
+        Log(l.Listening ? "listening" : "listen error: " + l.Error);
+        var seenRunning = false; bool seenStopped = false;
+        while (sw.Elapsed.TotalSeconds < secs)
+        {
+            auto.Tick();
+            if (running) seenRunning = true; else if (seenRunning) seenStopped = true;
+            Thread.Sleep(100);
+        }
+        Log($"packets={l.PacketCount} version=v{l.ProtocolVersion} started={seenRunning} stopped={seenStopped}");
+        return seenRunning && seenStopped ? 0 : 1;
+    }
+
+    private static int PortArg(string[] args)
+    {
+        foreach (var a in args) if (a.StartsWith("--port=") && int.TryParse(a[7..], out var p)) return p;
+        return Ets2Packet.Port;
     }
 
     private static int Ets2ListenTest(string[] args)
