@@ -125,6 +125,7 @@ public sealed class ControllerService : ILightOutput, IHapticOutput, IDisposable
 
     public void SetLightbar(byte r, byte g, byte b)
     {
+        if (Program.ScreenshotDir != null) return;
         lock (_lock)
         {
             var info = Current;
@@ -155,6 +156,7 @@ public sealed class ControllerService : ILightOutput, IHapticOutput, IDisposable
 
     public void SetPlayerLeds(byte mask, byte? brightness)
     {
+        if (Program.ScreenshotDir != null) return;
         lock (_lock)
         {
             var info = Current;
@@ -173,6 +175,7 @@ public sealed class ControllerService : ILightOutput, IHapticOutput, IDisposable
 
     public bool SetMicLed(bool on)
     {
+        if (Program.ScreenshotDir != null) return false;
         lock (_lock)
         {
             var hid = Hid;
@@ -184,6 +187,7 @@ public sealed class ControllerService : ILightOutput, IHapticOutput, IDisposable
 
     public bool SetRumble(byte strong, byte weak)
     {
+        if (Program.ScreenshotDir != null) return false;
         lock (_lock)
         {
             var hid = Hid;
@@ -195,6 +199,7 @@ public sealed class ControllerService : ILightOutput, IHapticOutput, IDisposable
 
     public bool SetTriggers(TriggerEffect left, TriggerEffect right)
     {
+        if (Program.ScreenshotDir != null) return false;
         lock (_lock)
         {
             var hid = Hid;

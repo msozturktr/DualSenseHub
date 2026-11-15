@@ -93,6 +93,7 @@ public static class ConfigStore
 
     private static void Save<T>(string path, T value)
     {
+        if (Program.ScreenshotDir != null) return;
         try
         {
             Directory.CreateDirectory(Dir);

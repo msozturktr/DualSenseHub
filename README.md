@@ -4,6 +4,8 @@
 
 A Linux control center for the Sony DualSense (PS5) controller, with an Euro Truck Simulator 2 game mode.
 
+![Color tab: lightbar effects, presets, player LEDs and profiles](docs/screenshots/color.png)
+
 - **Lightbar:** any color, brightness, presets, profiles and effects (static, breathing, rainbow, blink, battery-level color)
 - **Player and mic LEDs**
 - **Device info:** battery, connection type (USB/Bluetooth), MAC, firmware/hardware versions
@@ -12,6 +14,10 @@ A Linux control center for the Sony DualSense (PS5) controller, with an Euro Tru
 - **System tray** app with autostart; ETS2 mode starts automatically when the game is detected
 
 Built with C# + Avalonia UI (.NET 10). Talks to the controller through the kernel `hid_playstation` driver (sysfs) and raw hidraw output reports (USB and Bluetooth, with CRC32).
+
+## Screenshots
+
+![Device info and live input test](docs/screenshots/device.png)
 
 ## Install
 
@@ -27,6 +33,10 @@ cd DualSenseHub
 Reconnect the controller after installing the udev rule. Then launch **DualSense Hub** from your app menu (or run `dualsensehub`). Closing the window keeps it in the tray; use **Çıkış** (Exit) in the tray menu to quit. Re-running `install.sh` updates the app and restarts the running instance. `./scripts/uninstall.sh` removes it (settings in `~/.config/dualsensehub/` are kept).
 
 ## ETS2 mode
+
+![Game Modes tab: ETS2 lightbar rules](docs/screenshots/game-modes.png)
+
+![ETS2 haptics and adaptive trigger settings](docs/screenshots/haptics.png)
 
 ETS2 data comes from a small SCS Telemetry SDK plugin that sends UDP packets to `127.0.0.1:47555`. It is built as a Windows DLL (works with the Proton version of the game) using clang + lld + llvm-dlltool, no MinGW needed.
 

@@ -4,6 +4,8 @@
 
 Sony DualSense (PS5) kontrolcüsü için bir Linux kontrol merkezi, Euro Truck Simulator 2 oyun modu ile birlikte.
 
+![Renk sekmesi: lightbar efektleri, hazır renkler, oyuncu LED'leri ve profiller](docs/screenshots/color.png)
+
 - **Lightbar:** herhangi bir renk, parlaklık, ön ayarlar, profiller ve efektler (sabit, nefes, gökkuşağı, yanıp sönme, pil seviyesi rengi)
 - **Oyuncu ve mikrofon LED'leri**
 - **Cihaz bilgisi:** pil, bağlantı türü (USB/Bluetooth), MAC, firmware/donanım sürümleri
@@ -12,6 +14,10 @@ Sony DualSense (PS5) kontrolcüsü için bir Linux kontrol merkezi, Euro Truck S
 - **Sistem tepsisi** uygulaması otomatik başlatma ile; ETS2 modu oyun algılandığında otomatik olarak başlar
 
 C# + Avalonia UI (.NET 10) ile inşa edilmiştir. Kontrolcüye kernel `hid_playstation` sürücüsü (sysfs) ve ham hidraw çıkış raporları (USB ve Bluetooth, CRC32 ile) üzerinden bağlanır.
+
+## Ekran görüntüleri
+
+![Cihaz bilgisi ve canlı giriş testi](docs/screenshots/device.png)
 
 ## Kurulum
 
@@ -27,6 +33,10 @@ cd DualSenseHub
 Udev kuralını kurduktan sonra kontrolcüyü yeniden bağlayın. Ardından **DualSense Hub**'ı uygulama menünüzden başlatın (ya da `dualsensehub` komutunu çalıştırın). Pencereyi kapatmak uygulamayı tepsiye bırakır; çıkmak için tepsi menüsündeki **Çıkış** seçeneğini kullanın. `install.sh` dosyasını yeniden çalıştırmak uygulamayı günceller ve çalışan örneği yeniden başlatır. `./scripts/uninstall.sh` kaldırır ( `~/.config/dualsensehub/` içindeki ayarlar korunur).
 
 ## ETS2 modu
+
+![Oyun Modları sekmesi: ETS2 lightbar kuralları](docs/screenshots/game-modes.png)
+
+![ETS2 titreşim ve adaptif tetik ayarları](docs/screenshots/haptics.png)
 
 ETS2 verileri, `127.0.0.1:47555` adresine UDP paketleri gönderen küçük bir SCS Telemetry SDK eklentisinden gelir. Bu eklenti Windows DLL'i olarak derlenir (oyunun Proton sürümüyle çalışır) ve clang + lld + llvm-dlltool kullanılarak oluşturulur, MinGW gerekmez.
 

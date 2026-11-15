@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Media.Imaging;
+using Avalonia.VisualTree;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -28,6 +30,14 @@ public partial class App : Application
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
             _vm = new MainViewModel();
             _window = new MainWindow { DataContext = _vm };
+            if (Program.ScreenshotDir != null)
+            {
+                _window.Width = 1100; _window.Height = 760;
+                _window.Show();
+                _ = CaptureScreenshots(Program.ScreenshotDir);
+                base.OnFrameworkInitializationCompleted();
+                return;
+            }
             _window.Closing += (_, e) =>
             {
                 if (_quitting) return;
@@ -46,6 +56,40 @@ public partial class App : Application
             if (!hidden) ShowWindow();
         }
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>Hidden dev mode (--screenshots dir): renders each tab to PNG, then exits.</summary>
+    private async Task CaptureScreenshots(string dir)
+    {
+        try
+        {
+            var w = _window!;
+            await Task.Delay(1500);
+            var tabs = w.GetVisualDescendants().OfType<TabControl>().First();
+            async Task Select(int i) { tabs.SelectedIndex = i; await Task.Delay(700); }
+            void Save(string name)
+            {
+                const double scale = 1.5;
+                var size = w.Bounds.Size;
+                var px = new Avalonia.PixelSize((int)(size.Width * scale), (int)(size.Height * scale));
+                using var bmp = new RenderTargetBitmap(px, new Avalonia.Vector(96 * scale, 96 * scale));
+                bmp.Render(w);
+                bmp.Save(Path.Combine(dir, name));
+            }
+            await Select(0); Save("color.png");
+            await Select(1); Save("device.png");
+            await Select(2); Save("game-modes.png");
+            var sv = w.GetVisualDescendants().OfType<GameModesTabView>().First().GetVisualDescendants().OfType<ScrollViewer>().First();
+            var head = sv.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault(t => t.Text == "Titreşim ve tetikler");
+            if (head != null && head.TranslatePoint(new Avalonia.Point(0, 0), (Avalonia.Visual)sv.Content!) is { } pt)
+            {
+                sv.Offset = new Avalonia.Vector(0, Math.Max(0, pt.Y - 12));
+                await Task.Delay(700);
+                Save("haptics.png");
+            }
+        }
+        catch (Exception e) { Console.Error.WriteLine("screenshots failed: " + e); }
+        finally { Quit(); }
     }
 
     private void ShowWindow()

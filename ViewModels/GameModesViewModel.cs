@@ -78,7 +78,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
         _saveTimer = new Timer(_ => ConfigStore.SaveEts2(_ets2.Settings), null, Timeout.Infinite, Timeout.Infinite);
         _auto.Enabled = s.AutoStart;
         _ui.Tick += (_, _) => { _auto.Tick(); UpdateReadout(); };
-        _listener.Start();
+        if (Program.ScreenshotDir == null) _listener.Start();
         _ui.Start();
     }
 
@@ -144,6 +144,11 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
 
     private void UpdateReadout()
     {
+        if (Program.ScreenshotDir != null)
+        {
+            ConnectionText = "Bağlantı yok (oyun/eklenti bekleniyor)\nUDP 47555: dinleniyor | paket: 0 | son paket: - | protokol: -";
+            Readout = ""; return;
+        }
         string state = _listener.Listening ? "dinleniyor" : $"port hatası: {_listener.Error ?? "başlatılıyor"}";
         long age = _listener.LastPacketAgeMs;
         string ageText = age < 0 ? "-" : $"{age / 1000.0:F1} sn önce";

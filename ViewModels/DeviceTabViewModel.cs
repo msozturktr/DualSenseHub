@@ -55,12 +55,18 @@ public sealed partial class DeviceTabViewModel : ObservableObject, IDisposable
         Model = i.ModelName;
         Battery = _service.BatteryPercent is { } p ? $"%{p} ({TranslateStatus(_service.BatteryStatus)})" : "-";
         Connection = i.Connection switch { ConnectionType.Bluetooth => "Bluetooth", ConnectionType.Usb => "USB", _ => "?" };
-        Mac = _service.PairingMac ?? i.Mac ?? "-";
+        Mac = Program.ScreenshotDir != null ? "XX:XX:XX:XX:XX:XX" : _service.PairingMac ?? i.Mac ?? "-";
         var fw = _service.Firmware;
         Firmware = fw == null ? "-" : $"{fw.FirmwareVersion} (derleme {fw.BuildDate} {fw.BuildTime})";
         Hardware = fw?.HardwareVersion ?? "-";
         HidrawPath = i.HidrawPath;
         SysfsPaths = string.Join("\n", new[] { i.LightbarLed, i.BatteryDir, i.HidSysPath }.Where(x => x != null));
+        if (Program.ScreenshotDir != null)
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            HidrawPath = HidrawPath.Replace(home, "~");
+            SysfsPaths = System.Text.RegularExpressions.Regex.Replace(SysfsPaths.Replace(home, "~"), "([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", "XX:XX:XX:XX:XX:XX");
+        }
         HidStatus = _service.Hid != null ? "hidraw erişimi: açık" : $"hidraw erişimi: kapalı ({_service.HidError ?? "?"})";
     }
 
