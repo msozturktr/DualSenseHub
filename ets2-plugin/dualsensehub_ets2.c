@@ -4,10 +4,12 @@
 #define EXPORT __declspec(dllexport)
 #define PORT 47555
 #define MIN_INTERVAL_US 33000ull
+#define MAX_WHEELS 8
+#define PROTOCOL_VERSION 2
 
 enum {
     F_LBLINKER = 1 << 0, F_RBLINKER = 1 << 1, F_HAZARD = 1 << 2, F_BRAKE = 1 << 3,
-    F_ENGINE = 1 << 4, F_ELECTRIC = 1 << 5, F_PAUSED = 1 << 6,
+    F_ENGINE = 1 << 4, F_ELECTRIC = 1 << 5, F_PAUSED = 1 << 6, F_PARKING = 1 << 7,
 };
 
 #pragma pack(push, 1)
@@ -23,9 +25,20 @@ typedef struct {
     float fuel_capacity;
     uint32_t seq;
     float throttle;     /* 0..1, truck.effective.throttle */
+    /* version 2 */
+    float brake;        /* 0..1, truck.effective.brake */
+    float air_pressure; /* psi, truck.brake.air.pressure */
+    int32_t gear;       /* truck.engine.gear: >0 forward, 0 neutral, <0 reverse */
+    uint8_t wheel_count;
+    uint8_t ground_mask; /* bit i: wheel i touches ground */
+    uint8_t left_mask;   /* bit i: wheel i is on the left side (config wheel.position x < 0) */
+    uint8_t reserved2;
+    float susp[MAX_WHEELS];   /* truck.wheel.suspension.deflection, m */
+    float vel[MAX_WHEELS];    /* truck.wheel.angular_velocity, rotations/s */
+    float radius[MAX_WHEELS]; /* config wheel.radius, m */
 } packet_t;
 #pragma pack(pop)
-_Static_assert(sizeof(packet_t) == 36, "packet size");
+_Static_assert(sizeof(packet_t) == 148, "packet size");
 
 /* ws2_32 (stdcall == default on x64) */
 typedef uintptr_t SOCKET;
@@ -67,6 +80,28 @@ static void on_bool(scs_string_t name, scs_u32_t index, const scs_value_t *v, sc
     set_flag((uint16_t)(uintptr_t)ctx, v && v->value_bool.value);
 }
 
+static void on_s32(scs_string_t name, scs_u32_t index, const scs_value_t *v, scs_context_t ctx)
+{
+    (void)name; (void)index; (void)ctx;
+    g_pkt.gear = v ? v->value_s32.value : 0;
+}
+
+static void on_ground(scs_string_t name, scs_u32_t index, const scs_value_t *v, scs_context_t ctx)
+{
+    (void)name; (void)ctx;
+    if (index >= MAX_WHEELS) return;
+    if (v && v->value_bool.value) g_pkt.ground_mask |= (uint8_t)(1u << index);
+    else g_pkt.ground_mask &= (uint8_t)~(1u << index);
+}
+
+static void on_wheel_float(scs_string_t name, scs_u32_t index, const scs_value_t *v, scs_context_t ctx)
+{
+    (void)name;
+    if (index >= MAX_WHEELS) return;
+    float f = v ? v->value_float.value : 0.0f;
+    if ((uintptr_t)ctx == 0) g_pkt.susp[index] = f; else g_pkt.vel[index] = f;
+}
+
 static void on_float(scs_string_t name, scs_u32_t index, const scs_value_t *v, scs_context_t ctx)
 {
     (void)name; (void)index;
@@ -76,6 +111,8 @@ static void on_float(scs_string_t name, scs_u32_t index, const scs_value_t *v, s
     case 1: g_pkt.rpm = f; break;
     case 2: g_pkt.fuel = f; break;
     case 3: g_pkt.throttle = f; break;
+    case 4: g_pkt.brake = f; break;
+    case 5: g_pkt.air_pressure = f; break;
     }
 }
 
@@ -95,10 +132,23 @@ static void on_event(scs_event_t ev, const void *info, scs_context_t ctx)
     case SCS_TELEMETRY_EVENT_configuration: {
         const scs_telemetry_configuration_t *c = (const scs_telemetry_configuration_t *)info;
         if (!c || !c->id || !streq(c->id, "truck")) break;
+        g_pkt.wheel_count = 0; g_pkt.left_mask = 0;
+        for (int i = 0; i < MAX_WHEELS; i++) g_pkt.radius[i] = 0.0f;
         for (const scs_named_value_t *a = c->attributes; a && a->name; a++) {
-            if (a->value.type != SCS_VALUE_TYPE_float) continue;
-            if (streq(a->name, "fuel.capacity")) g_pkt.fuel_capacity = a->value.value_float.value;
-            else if (streq(a->name, "rpm.limit")) g_pkt.rpm_limit = a->value.value_float.value;
+            if (a->value.type == SCS_VALUE_TYPE_float) {
+                if (streq(a->name, "fuel.capacity")) g_pkt.fuel_capacity = a->value.value_float.value;
+                else if (streq(a->name, "rpm.limit")) g_pkt.rpm_limit = a->value.value_float.value;
+                else if (streq(a->name, "wheel.radius") && a->index < MAX_WHEELS) g_pkt.radius[a->index] = a->value.value_float.value;
+            } else if (a->value.type == SCS_VALUE_TYPE_u32) {
+                if (streq(a->name, "wheels.count")) {
+                    uint32_t n = a->value.value_u32.value;
+                    g_pkt.wheel_count = (uint8_t)(n > MAX_WHEELS ? MAX_WHEELS : n);
+                }
+            } else if (a->value.type == SCS_VALUE_TYPE_fvector) {
+                /* vehicle space: +x is right, so x < 0 is a left-side wheel (assumption, see PROTOCOL.md) */
+                if (streq(a->name, "wheel.position") && a->index < MAX_WHEELS && a->value.value_fvector.x < 0.0f)
+                    g_pkt.left_mask |= (uint8_t)(1u << a->index);
+            }
         }
         break;
     }
@@ -111,10 +161,14 @@ EXPORT scs_result_t scs_telemetry_init(const scs_u32_t version, const void *para
     const scs_telemetry_init_params_v100_t *p = params;
 
     g_pkt.magic[0] = 'D'; g_pkt.magic[1] = 'S'; g_pkt.magic[2] = 'H'; g_pkt.magic[3] = '1';
-    g_pkt.version = 1;
+    g_pkt.version = PROTOCOL_VERSION;
     g_pkt.reserved = 0;
     g_pkt.flags = 0;
     g_pkt.speed = g_pkt.rpm = g_pkt.rpm_limit = g_pkt.fuel = g_pkt.fuel_capacity = g_pkt.throttle = 0.0f;
+    g_pkt.brake = g_pkt.air_pressure = 0.0f;
+    g_pkt.gear = 0;
+    g_pkt.wheel_count = g_pkt.ground_mask = g_pkt.left_mask = g_pkt.reserved2 = 0;
+    for (int i = 0; i < MAX_WHEELS; i++) g_pkt.susp[i] = g_pkt.vel[i] = g_pkt.radius[i] = 0.0f;
     g_pkt.seq = 0;
     g_last_flags = 0xFFFF; g_last_send = g_render_time = 0;
 
@@ -143,6 +197,16 @@ EXPORT scs_result_t scs_telemetry_init(const scs_u32_t version, const void *para
     p->register_for_channel("truck.engine.rpm", SCS_U32_NIL, SCS_VALUE_TYPE_float, 0, on_float, (void *)(uintptr_t)1);
     p->register_for_channel("truck.fuel.amount", SCS_U32_NIL, SCS_VALUE_TYPE_float, 0, on_float, (void *)(uintptr_t)2);
     p->register_for_channel("truck.effective.throttle", SCS_U32_NIL, SCS_VALUE_TYPE_float, 0, on_float, (void *)(uintptr_t)3);
+    p->register_for_channel("truck.effective.brake", SCS_U32_NIL, SCS_VALUE_TYPE_float, 0, on_float, (void *)(uintptr_t)4);
+    p->register_for_channel("truck.brake.air.pressure", SCS_U32_NIL, SCS_VALUE_TYPE_float, 0, on_float, (void *)(uintptr_t)5);
+    p->register_for_channel("truck.brake.parking", SCS_U32_NIL, SCS_VALUE_TYPE_bool, 0, on_bool, (void *)(uintptr_t)F_PARKING);
+    p->register_for_channel("truck.engine.gear", SCS_U32_NIL, SCS_VALUE_TYPE_s32, 0, on_s32, 0);
+    /* Indexed channels: indices beyond the truck's real wheel count simply fail to register. */
+    for (scs_u32_t i = 0; i < MAX_WHEELS; i++) {
+        p->register_for_channel("truck.wheel.suspension.deflection", i, SCS_VALUE_TYPE_float, 0, on_wheel_float, (void *)(uintptr_t)0);
+        p->register_for_channel("truck.wheel.angular_velocity", i, SCS_VALUE_TYPE_float, 0, on_wheel_float, (void *)(uintptr_t)1);
+        p->register_for_channel("truck.wheel.on_ground", i, SCS_VALUE_TYPE_bool, 0, on_ground, 0);
+    }
     return SCS_RESULT_ok;
 }
 

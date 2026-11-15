@@ -37,6 +37,17 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _brakeColor = "";
     [ObservableProperty] private string _lowFuelColor = "";
 
+    [ObservableProperty] private bool _roadFeel;
+    [ObservableProperty] private double _roadFeelLevel;
+    [ObservableProperty] private bool _gearShift;
+    [ObservableProperty] private double _gearShiftLevel;
+    [ObservableProperty] private bool _triggers;
+    [ObservableProperty] private double _triggersLevel;
+    [ObservableProperty] private bool _engineRumble;
+    [ObservableProperty] private double _engineRumbleLevel;
+    [ObservableProperty] private bool _abs;
+    [ObservableProperty] private double _absLevel;
+
     public string ButtonText => IsRunning ? "Durdur" : "Başlat";
 
     public GameModesViewModel(ILightOutput output, EffectEngine engine)
@@ -49,6 +60,11 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
         Blinkers = s.Blinkers; Brake = s.Brake; EngineOff = s.EngineOff; LowFuel = s.LowFuel; Gradient = s.Gradient;
         DimWhenPaused = s.DimWhenPaused; SourceIndex = (int)s.Source;
         BlinkerColor = s.BlinkerColor; BrakeColor = s.BrakeColor; LowFuelColor = s.LowFuelColor;
+        RoadFeel = s.RoadFeel; RoadFeelLevel = s.RoadFeelLevel;
+        GearShift = s.GearShift; GearShiftLevel = s.GearShiftLevel;
+        Triggers = s.Triggers; TriggersLevel = s.TriggersLevel;
+        EngineRumble = s.EngineRumble; EngineRumbleLevel = s.EngineRumbleLevel;
+        Abs = s.Abs; AbsLevel = s.AbsLevel;
         _loading = false;
         _saveTimer = new Timer(_ => ConfigStore.SaveEts2(_ets2.Settings), null, Timeout.Infinite, Timeout.Infinite);
         _ui.Tick += (_, _) => UpdateReadout();
@@ -67,6 +83,17 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     partial void OnBlinkerColorChanged(string value) => Edit(s => s.BlinkerColor = value);
     partial void OnBrakeColorChanged(string value) => Edit(s => s.BrakeColor = value);
     partial void OnLowFuelColorChanged(string value) => Edit(s => s.LowFuelColor = value);
+
+    partial void OnRoadFeelChanged(bool value) => Edit(s => s.RoadFeel = value);
+    partial void OnRoadFeelLevelChanged(double value) => Edit(s => s.RoadFeelLevel = (int)Math.Round(value));
+    partial void OnGearShiftChanged(bool value) => Edit(s => s.GearShift = value);
+    partial void OnGearShiftLevelChanged(double value) => Edit(s => s.GearShiftLevel = (int)Math.Round(value));
+    partial void OnTriggersChanged(bool value) => Edit(s => s.Triggers = value);
+    partial void OnTriggersLevelChanged(double value) => Edit(s => s.TriggersLevel = (int)Math.Round(value));
+    partial void OnEngineRumbleChanged(bool value) => Edit(s => s.EngineRumble = value);
+    partial void OnEngineRumbleLevelChanged(double value) => Edit(s => s.EngineRumbleLevel = (int)Math.Round(value));
+    partial void OnAbsChanged(bool value) => Edit(s => s.Abs = value);
+    partial void OnAbsLevelChanged(double value) => Edit(s => s.AbsLevel = (int)Math.Round(value));
 
     private void Edit(Action<Ets2Settings> change)
     {

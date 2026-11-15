@@ -26,8 +26,11 @@ typedef scs_u32_t scs_event_t;
 #define SCS_RESULT_unsupported (-1)
 #define SCS_U32_NIL 0xFFFFFFFFu
 
-#define SCS_VALUE_TYPE_bool  1
-#define SCS_VALUE_TYPE_float 5
+#define SCS_VALUE_TYPE_bool    1
+#define SCS_VALUE_TYPE_s32     2
+#define SCS_VALUE_TYPE_u32     3
+#define SCS_VALUE_TYPE_float   5
+#define SCS_VALUE_TYPE_fvector 7
 
 #define SCS_TELEMETRY_EVENT_frame_start   1
 #define SCS_TELEMETRY_EVENT_frame_end     2
@@ -36,14 +39,20 @@ typedef scs_u32_t scs_event_t;
 #define SCS_TELEMETRY_EVENT_configuration 5
 
 typedef struct { scs_u8_t value; } scs_value_bool_t;
+typedef struct { scs_s32_t value; } scs_value_s32_t;
+typedef struct { scs_u32_t value; } scs_value_u32_t;
 typedef struct { float value; } scs_value_float_t;
+typedef struct { float x, y, z; } scs_value_fvector_t;
 
 typedef struct {
     scs_value_type_t type;
     scs_u32_t _padding;
     union {
         scs_value_bool_t value_bool;
+        scs_value_s32_t value_s32;
+        scs_value_u32_t value_u32;
         scs_value_float_t value_float;
+        scs_value_fvector_t value_fvector;
         scs_u64_t _size_pad[5]; /* largest member (dplacement) is 40 bytes */
     };
 } scs_value_t;

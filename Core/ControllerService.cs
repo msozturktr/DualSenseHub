@@ -4,7 +4,7 @@ namespace DualSenseHub.Core;
 /// Owns discovery (2 s polling for hot-plug), the hidraw handle and all output paths.
 /// Lightbar uses sysfs (multi_intensity + brightness) and falls back to raw reports.
 /// </summary>
-public sealed class ControllerService : ILightOutput, IDisposable
+public sealed class ControllerService : ILightOutput, IHapticOutput, IDisposable
 {
     private readonly object _lock = new();
     private CancellationTokenSource? _cts;

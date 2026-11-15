@@ -15,6 +15,14 @@ public sealed class Ets2Mode : IGameMode, IDisposable
     private (byte, byte, byte, byte)? _last;
     private long _lastBlinkOnMs = -100000;
 
+    private readonly Ets2Haptics _haptics = new();
+    private readonly object _tickLock = new();
+    private IHapticOutput? _hap;
+    private byte _lastStrong, _lastWeak;
+    private long _lastRumbleMs = -100000;
+    private TriggerEffect? _lastLeft, _lastRight;
+    private const long RumbleKeepaliveMs = 500;
+
     public string Name => "Euro Truck Simulator 2";
     public Ets2Settings Settings { get; set; } = new();
     public Ets2TelemetryListener Listener => _listener;
@@ -24,7 +32,9 @@ public sealed class Ets2Mode : IGameMode, IDisposable
     public void Start(ILightOutput output)
     {
         _out = output;
+        _hap = output as IHapticOutput;
         _last = null;
+        _lastStrong = _lastWeak = 0; _lastLeft = _lastRight = null;
         _listener.Start();
         _timer = new Timer(_ => Tick(), null, 0, 33);
     }
@@ -33,14 +43,48 @@ public sealed class Ets2Mode : IGameMode, IDisposable
     {
         _timer?.Dispose(); _timer = null;
         _listener.Stop();
-        var o = _out; _out = null;
-        o?.SetPlayerLeds(0);
+        lock (_tickLock)
+        {
+            // Rumble off and triggers released when the mode stops.
+            _hap?.SetRumble(0, 0);
+            _hap?.SetTriggers(TriggerEffect.Off(), TriggerEffect.Off());
+            _hap = null;
+            var o = _out; _out = null;
+            o?.SetPlayerLeds(0);
+        }
     }
 
     private void Tick()
     {
-        var o = _out;
-        if (o == null || !_listener.Connected) return;
+        lock (_tickLock)
+        {
+            var o = _out;
+            if (o == null) return;
+            if (_hap != null) TickHaptics(_hap);
+            if (!_listener.Connected) return;
+            TickLights(o);
+        }
+    }
+
+    private void TickHaptics(IHapticOutput h)
+    {
+        long now = _clock.ElapsedMilliseconds;
+        var f = _haptics.Update(_listener.Latest, _listener.Connected, Settings, now);
+        bool changed = f.Strong != _lastStrong || f.Weak != _lastWeak;
+        if (changed || (f.Strong | f.Weak) != 0 && now - _lastRumbleMs >= RumbleKeepaliveMs)
+        {
+            h.SetRumble(f.Strong, f.Weak);
+            _lastStrong = f.Strong; _lastWeak = f.Weak; _lastRumbleMs = now;
+        }
+        if (!f.Left.SameAs(_lastLeft) || !f.Right.SameAs(_lastRight))
+        {
+            h.SetTriggers(f.Left, f.Right);
+            _lastLeft = f.Left; _lastRight = f.Right;
+        }
+    }
+
+    private void TickLights(ILightOutput o)
+    {
         var (r, g, b, mask) = Compute(_listener.Latest, Settings, _clock.ElapsedMilliseconds, ref _lastBlinkOnMs);
         if (_last == (r, g, b, mask)) return;
         _last = (r, g, b, mask);

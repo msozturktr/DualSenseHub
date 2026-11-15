@@ -11,6 +11,8 @@ public sealed class TriggerEffect
 
     public static TriggerEffect Off() => new() { Mode = 0x05 };
 
+    public bool SameAs(TriggerEffect? o) => o != null && Mode == o.Mode && Params.AsSpan().SequenceEqual(o.Params);
+
     /// <summary>Constant resistance from <paramref name="start"/> (0-9 zone) with given force (0-255).</summary>
     public static TriggerEffect Continuous(byte start, byte force)
         => new() { Mode = 0x01, Params = [start, force, 0, 0, 0, 0, 0, 0, 0, 0] };

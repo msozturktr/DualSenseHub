@@ -3,17 +3,19 @@ using DualSenseHub.Core.Ets2;
 
 namespace DualSenseHub;
 
-/// <summary>Headless commands: --info, --apply-last, --set-color RRGGBB, --ets2-sim, --ets2-listen-test.</summary>
+/// <summary>Headless commands: --info, --apply-last, --set-color RRGGBB, --ets2-sim, --ets2-listen-test, --ets2-haptics-test, --rumble-test.</summary>
 public static class Cli
 {
     public static bool IsCliRun(string[] args) =>
         args.Contains("--info") || args.Contains("--apply-last") || args.Contains("--set-color")
-        || args.Contains("--ets2-sim") || args.Contains("--ets2-listen-test");
+        || args.Contains("--ets2-sim") || args.Contains("--ets2-haptics-test") || args.Contains("--rumble-test") || args.Contains("--ets2-listen-test");
 
     public static int Run(string[] args)
     {
         if (args.Contains("--info")) return Info();
         if (args.Contains("--set-color")) return SetColor(args);
+        if (args.Contains("--ets2-haptics-test")) return Ets2HapticsTest(args);
+        if (args.Contains("--rumble-test")) return RumbleTest();
         if (args.Contains("--ets2-sim")) return Ets2SimRun(args);
         if (args.Contains("--ets2-listen-test")) return Ets2ListenTest(args);
         return ApplyLast(args);
@@ -138,5 +140,81 @@ public static class Cli
         Thread.Sleep(secs * 1000);
         Console.WriteLine($"Received {count} packets in {secs} s; connected={l.Connected}.");
         return count > 0 ? 0 : 1;
+    }
+
+    /// <summary>Feeds simulated packets directly through <see cref="Ets2Haptics"/> (no UDP, no controller) and summarizes the outputs.</summary>
+    private static int Ets2HapticsTest(string[] args)
+    {
+        int secs = 30;
+        foreach (var a in args) if (a.StartsWith("--seconds=") && int.TryParse(a[10..], out var s)) secs = s;
+        var settings = new Ets2Settings { EngineRumble = true };
+        var h = new Ets2Haptics();
+        var totals = new SortedDictionary<string, int>();
+        int ticks = 0, rumbleSends = 0, triggerSends = 0;
+        byte lastS = 0, lastW = 0;
+        TriggerEffect? lastL = null, lastR = null;
+        int maxS = 0, maxW = 0;
+        string L = "off", R = "off";
+        var secFeatures = new SortedSet<string>();
+        uint seq = 0;
+        Console.WriteLine("t(s)  strongMax weakMax  L2        R2        features");
+        for (int ms = 0; ms < secs * 1000; ms += 33)
+        {
+            var p = Ets2Sim.Frame(ms / 1000.0, ++seq);
+            var f = h.Update(p, true, settings, ms);
+            ticks++;
+            if (f.Strong != lastS || f.Weak != lastW) { rumbleSends++; lastS = f.Strong; lastW = f.Weak; }
+            if (!f.Left.SameAs(lastL) || !f.Right.SameAs(lastR)) { triggerSends++; lastL = f.Left; lastR = f.Right; }
+            maxS = Math.Max(maxS, f.Strong); maxW = Math.Max(maxW, f.Weak);
+            L = Describe(f.Left); R = Describe(f.Right);
+            foreach (var n in f.Active.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            {
+                secFeatures.Add(n);
+                totals[n] = totals.GetValueOrDefault(n) + 1;
+            }
+            if ((ms + 33) / 1000 != ms / 1000)
+            {
+                Console.WriteLine($"{ms / 1000,4}  {maxS,9} {maxW,7}  {L,-9} {R,-9} {string.Join(",", secFeatures)}");
+                maxS = maxW = 0; secFeatures.Clear();
+            }
+        }
+        var paused = h.Update(Ets2Sim.Frame(1, ++seq) with { Flags = (ushort)(Ets2Sim.Frame(1, 0).Flags | 64) }, true, settings, secs * 1000 + 33);
+        var gone = h.Update(default, false, settings, secs * 1000 + 66);
+        Console.WriteLine($"Ticks {ticks}, rumble sends {rumbleSends}, trigger sends {triggerSends}");
+        Console.WriteLine("Active ticks per feature: " + string.Join(", ", totals.Select(kv => $"{kv.Key}={kv.Value}")));
+        bool idleOk(HapticFrame x) => x.Strong == 0 && x.Weak == 0 && x.Left.SameAs(TriggerEffect.Off()) && x.Right.SameAs(TriggerEffect.Off());
+        Console.WriteLine($"Paused -> idle: {idleOk(paused)}; disconnected -> idle: {idleOk(gone)}");
+        var rt = Ets2Sim.Frame(5.5, 7);
+        var bytes = rt.ToBytes();
+        bool v2ok = Ets2Packet.TryParse(bytes, out var back) && back.Gear == rt.Gear && back.WheelCount == rt.WheelCount && back.Susp![2] == rt.Susp![2] && back.Radius![0] == rt.Radius![0] && back.LeftMask == rt.LeftMask;
+        bool v1ok = Ets2Packet.TryParse(bytes.AsSpan(0, 36).ToArray().Select((b, i) => i == 4 ? (byte)1 : b).ToArray(), out var old) && old.Rpm == rt.Rpm && old.WheelCount == 0;
+        bool v1short = Ets2Packet.TryParse(bytes.AsSpan(0, 32).ToArray().Select((b, i) => i == 4 ? (byte)1 : b).ToArray(), out _);
+        Console.WriteLine($"Packet round trip v2: {v2ok}; v1/36 bytes: {v1ok}; v1/32 bytes: {v1short}");
+        string[] need = ["road", "gear", "brake", "parking", "rpm-limit", "engine", "abs"];
+        var missing = need.Where(n => !totals.ContainsKey(n)).ToArray();
+        Console.WriteLine(missing.Length == 0 ? "All features triggered." : "NOT triggered: " + string.Join(", ", missing));
+        return missing.Length == 0 && idleOk(paused) && idleOk(gone) && v2ok && v1ok && v1short ? 0 : 1;
+    }
+
+    private static string Describe(TriggerEffect e) => e.Mode switch
+    {
+        0x05 => "off",
+        0x01 => $"cont f{e.Params[1]}",
+        0x26 => $"vib f{e.Params[8]}Hz",
+        _ => $"mode {e.Mode:X2}",
+    };
+
+    /// <summary>One ~200 ms rumble pulse on the real controller to verify the raw output report path.</summary>
+    private static int RumbleTest()
+    {
+        using var svc = new ControllerService();
+        svc.Poll();
+        if (!svc.Connected) { Console.Error.WriteLine("No DualSense controller found."); return 1; }
+        if (svc.Hid == null) { Console.Error.WriteLine("hidraw not open: " + svc.HidError); return 2; }
+        bool on = svc.SetRumble(160, 160);
+        Thread.Sleep(200);
+        bool off = svc.SetRumble(0, 0);
+        Console.WriteLine($"Rumble on write: {(on ? "OK" : "FAILED")}; off write: {(off ? "OK" : "FAILED")} ({svc.Current!.Connection}).");
+        return on && off ? 0 : 2;
     }
 }

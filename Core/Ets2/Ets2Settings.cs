@@ -14,6 +14,17 @@ public sealed class Ets2Settings
     public GradientSource Source { get; set; } = GradientSource.Throttle;
     /// <summary>Speed (km/h) mapped to full red in speed gradient mode.</summary>
     public int MaxSpeedKmh { get; set; } = 110;
+    // Haptics (rumble and adaptive triggers); levels are 0-100 %.
+    public bool RoadFeel { get; set; } = true;
+    public int RoadFeelLevel { get; set; } = 60;
+    public bool GearShift { get; set; } = true;
+    public int GearShiftLevel { get; set; } = 60;
+    public bool Triggers { get; set; } = true;
+    public int TriggersLevel { get; set; } = 60;
+    public bool EngineRumble { get; set; }
+    public int EngineRumbleLevel { get; set; } = 50;
+    public bool Abs { get; set; } = true;
+    public int AbsLevel { get; set; } = 70;
     public string BlinkerColor { get; set; } = "FF8C00";
     public string BrakeColor { get; set; } = "FF0000";
     public string LowFuelColor { get; set; } = "FF5000";

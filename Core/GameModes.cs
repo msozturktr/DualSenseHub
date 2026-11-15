@@ -8,6 +8,13 @@ public interface ILightOutput
     void SetPlayerLeds(byte mask);
 }
 
+/// <summary>Rumble and adaptive trigger output; implemented by the controller service. Both return false when no write path exists.</summary>
+public interface IHapticOutput
+{
+    bool SetRumble(byte strong, byte weak);
+    bool SetTriggers(TriggerEffect left, TriggerEffect right);
+}
+
 /// <summary>A pluggable game integration (e.g. ETS2 telemetry) that drives the controller lights.</summary>
 public interface IGameMode
 {
