@@ -1,7 +1,7 @@
 namespace DualSenseHub.Core;
 
 [Flags]
-public enum OutputGroups { None = 0, Rumble = 1, Lightbar = 2, Player = 4, Mic = 8, TriggerLeft = 16, TriggerRight = 32 }
+public enum OutputGroups { None = 0, Rumble = 1, Lightbar = 2, Player = 4, Mic = 8, TriggerLeft = 16, TriggerRight = 32, LightbarSetup = 64 }
 
 /// <summary>An adaptive trigger effect: mode byte plus 10 parameter bytes.</summary>
 public sealed class TriggerEffect
@@ -61,6 +61,8 @@ public sealed class OutputState
         if (groups.HasFlag(OutputGroups.TriggerLeft)) { f0 |= 0x08; c[21] = LeftTrigger.Mode; Array.Copy(LeftTrigger.Params, 0, c, 22, 10); }
         if (groups.HasFlag(OutputGroups.Mic)) { f1 |= 0x01; c[8] = (byte)(MicLed ? 1 : 0); }
         if (groups.HasFlag(OutputGroups.Lightbar)) { f1 |= 0x04; c[44] = R; c[45] = G; c[46] = B; }
+        // Steam or the kernel may leave the lightbar faded out (LIGHT_OUT); switch it back on.
+        if (groups.HasFlag(OutputGroups.LightbarSetup)) { f2 |= 0x02; c[41] = 0x01; }
         if (groups.HasFlag(OutputGroups.Player)) { f1 |= 0x10; f2 |= 0x01; c[42] = LedBrightness; c[43] = (byte)(PlayerMask & 0x1F); }
         c[0] = f0; c[1] = f1; c[38] = f2;
 

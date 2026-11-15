@@ -121,6 +121,8 @@ public sealed class ControllerService : ILightOutput, IDisposable
 
     // ---- ILightOutput ----
 
+    private string? _lightbarSetupFor;
+
     public void SetLightbar(byte r, byte g, byte b)
     {
         lock (_lock)
@@ -128,7 +130,12 @@ public sealed class ControllerService : ILightOutput, IDisposable
             var info = Current;
             if (info == null) return;
             var hid = Hid;
-            if (hid != null) { hid.Output.R = r; hid.Output.G = g; hid.Output.B = b; }
+            if (hid != null)
+            {
+                hid.Output.R = r; hid.Output.G = g; hid.Output.B = b;
+                if (_lightbarSetupFor != info.HidrawPath && hid.Send(OutputGroups.Lightbar | OutputGroups.LightbarSetup))
+                    _lightbarSetupFor = info.HidrawPath;
+            }
             if (info.LightbarLed != null)
             {
                 int h = info.LightbarLed.GetHashCode();
