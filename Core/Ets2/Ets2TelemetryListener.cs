@@ -36,6 +36,9 @@ public sealed class Ets2TelemetryListener : IDisposable
     public string? LastRejectReason => _rejectReason;
     /// <summary>Version byte of the last rejected datagram (0 if unknown).</summary>
     public int LastRejectVersion => Volatile.Read(ref _rejectVersion);
+    /// <summary>Substance name table from the plugin (index = substance id); empty until the DSHS datagram arrives.</summary>
+    public string[] SubstanceNames => _substances;
+    private volatile string[] _substances = [];
     public Ets2Packet Latest { get { lock (_gate) return _latest; } }
     /// <summary>Milliseconds since the last valid packet, or -1 if none was ever received.</summary>
     public long LastPacketAgeMs { get { long t = Interlocked.Read(ref _lastTicks); return t == 0 ? -1 : Environment.TickCount64 - t; } }
@@ -83,6 +86,7 @@ public sealed class Ets2TelemetryListener : IDisposable
                         Thread.Sleep(100);
                         continue;
                     }
+                    if (Ets2Packet.TryParseSubstances(buf.AsSpan(0, n), out var names)) { _substances = names; continue; }
                     if (!Ets2Packet.TryParse(buf.AsSpan(0, n), out var p, out var why))
                     {
                         _rejectReason = why; Volatile.Write(ref _rejectVersion, n > 4 ? buf[4] : 0);

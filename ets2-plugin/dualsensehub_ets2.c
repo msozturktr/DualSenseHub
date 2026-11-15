@@ -5,7 +5,10 @@
 #define PORT 47555
 #define MIN_INTERVAL_US 33000ull
 #define MAX_WHEELS 8
-#define PROTOCOL_VERSION 4
+#define PROTOCOL_VERSION 5
+#define SUBST_MAX 64
+#define SUBST_NAME_MAX 32
+#define SUBST_RESEND_US 5000000ull
 
 enum {
     F_LBLINKER = 1 << 0, F_RBLINKER = 1 << 1, F_HAZARD = 1 << 2, F_BRAKE = 1 << 3,
@@ -45,9 +48,11 @@ typedef struct {
     uint8_t retarder;         /* truck.brake.retarder current level */
     uint8_t retarder_steps;   /* config retarder.steps */
     uint16_t reserved3;
+    /* version 5 */
+    uint8_t substance[MAX_WHEELS]; /* truck.wheel.substance index per wheel (name table in the DSHS datagram) */
 } packet_t;
 #pragma pack(pop)
-_Static_assert(sizeof(packet_t) == 176, "packet size");
+_Static_assert(sizeof(packet_t) == 184, "packet size");
 
 /* ws2_32 (stdcall == default on x64) */
 typedef uintptr_t SOCKET;
@@ -67,8 +72,19 @@ static uint64_t g_last_send, g_render_time;
 static uint16_t g_last_flags = 0xFFFF;
 static float g_wear[5];
 static float g_peak2;
+/* Substance name table sent as its own datagram: "DSHS", u8 count, then count NUL-terminated names. */
+static uint8_t g_subst[8 + SUBST_MAX * SUBST_NAME_MAX];
+static int g_subst_len, g_subst_count;
+static uint64_t g_last_subst_send;
 
 static void set_flag(uint16_t f, int on) { if (on) g_pkt.flags |= f; else g_pkt.flags &= (uint16_t)~f; }
+
+static void send_substances(void)
+{
+    if (g_sock == (SOCKET)~0 || g_subst_count == 0) return;
+    sendto(g_sock, (const char *)g_subst, g_subst_len, 0, &g_dest, (int)sizeof g_dest);
+    g_last_subst_send = g_render_time;
+}
 
 static void send_packet(void)
 {
@@ -78,6 +94,7 @@ static void send_packet(void)
     sendto(g_sock, (const char *)&g_pkt, (int)sizeof g_pkt, 0, &g_dest, (int)sizeof g_dest);
     g_last_send = g_render_time;
     g_last_flags = g_pkt.flags;
+    if (g_subst_count && (g_render_time - g_last_subst_send >= SUBST_RESEND_US || g_render_time < g_last_subst_send)) send_substances();
     g_peak2 = 0.0f; /* the next acceleration sample starts a new peak window */
 }
 
@@ -97,6 +114,14 @@ static void on_s32(scs_string_t name, scs_u32_t index, const scs_value_t *v, scs
 {
     (void)name; (void)index; (void)ctx;
     g_pkt.gear = v ? v->value_s32.value : 0;
+}
+
+static void on_substance(scs_string_t name, scs_u32_t index, const scs_value_t *v, scs_context_t ctx)
+{
+    (void)name; (void)ctx;
+    if (index >= MAX_WHEELS) return;
+    uint32_t n = v ? v->value_u32.value : 0;
+    g_pkt.substance[index] = (uint8_t)(n > 255 ? 255 : n);
 }
 
 static void on_ground(scs_string_t name, scs_u32_t index, const scs_value_t *v, scs_context_t ctx)
@@ -164,6 +189,32 @@ static void on_event(scs_event_t ev, const void *info, scs_context_t ctx)
     case SCS_TELEMETRY_EVENT_started: set_flag(F_PAUSED, 0); break;
     case SCS_TELEMETRY_EVENT_configuration: {
         const scs_telemetry_configuration_t *c = (const scs_telemetry_configuration_t *)info;
+        if (c && c->id && streq(c->id, "substances")) {
+            /* attribute "id", indexed: index = substance index, value = name string */
+            char names[SUBST_MAX][SUBST_NAME_MAX];
+            int count = 0;
+            for (const scs_named_value_t *a = c->attributes; a && a->name; a++) {
+                if (!streq(a->name, "id") || a->value.type != SCS_VALUE_TYPE_string || a->index >= SUBST_MAX) continue;
+                int i = (int)a->index;
+                while (count <= i) { names[count][0] = 0; count++; }
+                const char *src = a->value.value_string.value;
+                int k = 0;
+                while (src && src[k] && k < SUBST_NAME_MAX - 1) { names[i][k] = src[k]; k++; }
+                names[i][k] = 0;
+            }
+            if (count > 0) {
+                g_subst[0] = 'D'; g_subst[1] = 'S'; g_subst[2] = 'H'; g_subst[3] = 'S';
+                g_subst[4] = (uint8_t)count;
+                int pos = 5;
+                for (int i = 0; i < count; i++) {
+                    for (int k = 0; names[i][k]; k++) g_subst[pos++] = (uint8_t)names[i][k];
+                    g_subst[pos++] = 0;
+                }
+                g_subst_len = pos; g_subst_count = count;
+                send_substances();
+            }
+            break;
+        }
         if (!c || !c->id || !streq(c->id, "truck")) break;
         g_pkt.wheel_count = 0; g_pkt.left_mask = 0; g_pkt.retarder_steps = 0;
         for (int i = 0; i < MAX_WHEELS; i++) g_pkt.radius[i] = 0.0f;
@@ -210,6 +261,8 @@ EXPORT scs_result_t scs_telemetry_init(const scs_u32_t version, const void *para
     g_peak2 = 0.0f;
     g_pkt.wheel_count = g_pkt.ground_mask = g_pkt.left_mask = g_pkt.reserved2 = 0;
     for (int i = 0; i < MAX_WHEELS; i++) g_pkt.susp[i] = g_pkt.vel[i] = g_pkt.radius[i] = 0.0f;
+    for (int i = 0; i < MAX_WHEELS; i++) g_pkt.substance[i] = 0;
+    g_subst_len = g_subst_count = 0; g_last_subst_send = 0;
     g_pkt.seq = 0;
     g_last_flags = 0xFFFF; g_last_send = g_render_time = 0;
 
@@ -256,6 +309,7 @@ EXPORT scs_result_t scs_telemetry_init(const scs_u32_t version, const void *para
         p->register_for_channel("truck.wheel.suspension.deflection", i, SCS_VALUE_TYPE_float, 0, on_wheel_float, (void *)(uintptr_t)0);
         p->register_for_channel("truck.wheel.angular_velocity", i, SCS_VALUE_TYPE_float, 0, on_wheel_float, (void *)(uintptr_t)1);
         p->register_for_channel("truck.wheel.on_ground", i, SCS_VALUE_TYPE_bool, 0, on_ground, 0);
+        p->register_for_channel("truck.wheel.substance", i, SCS_VALUE_TYPE_u32, 0, on_substance, 0);
     }
     return SCS_RESULT_ok;
 }

@@ -15,7 +15,7 @@ public static class Ets2RecAnalyzer
         if (lines.Length < 2) { Console.Error.WriteLine("No rows."); return 1; }
         var col = lines[0].Split(',').Select((n, i) => (n, i)).ToDictionary(x => x.n, x => x.i);
         int W = 0;
-        var rows = new List<(double T, double Speed, int Wheels, double[] Vel, double[] Exc, string Active)>();
+        var rows = new List<(double T, double Speed, int Wheels, double[] Vel, double[] Exc, string Active, string[] Subst)>();
         foreach (var l in lines.Skip(1))
         {
             var c = l.Split(',');
@@ -25,7 +25,8 @@ public static class Ets2RecAnalyzer
             W = Math.Max(W, wheels);
             var vel = new double[8]; var exc = new double[8];
             for (int i = 0; i < 8; i++) { vel[i] = D("vel" + i); exc[i] = D("exc" + i); }
-            rows.Add((D("t_ms"), D("speed_kmh"), wheels, vel, exc, c[col["active"]]));
+            rows.Add((D("t_ms"), D("speed_kmh"), wheels, vel, exc, c[col["active"]],
+                col.TryGetValue("subst", out var si) && si < c.Length ? c[si].Split('|', StringSplitOptions.RemoveEmptyEntries) : []));
         }
         if (rows.Count == 0) { Console.Error.WriteLine("No valid rows."); return 1; }
         double dur = (rows[^1].T - rows[0].T) / 1000.0;
@@ -35,8 +36,8 @@ public static class Ets2RecAnalyzer
         {
             var b = rows.Where(r => r.Speed >= lo && r.Speed < hi).ToList();
             if (b.Count == 0) continue;
-            double roadPct = 100.0 * b.Count(r => Has(r.Active, "road")) / b.Count;
-            Console.WriteLine($"\nspeed {name} km/h: n={b.Count} ({100.0 * b.Count / rows.Count:F0}%), road rumble active {roadPct:F0}% of time");
+            double roadPct = 100.0 * b.Count(r => Has(r.Active, "tex") || Has(r.Active, "hit")) / b.Count;
+            Console.WriteLine($"\nspeed {name} km/h: n={b.Count} ({100.0 * b.Count / rows.Count:F0}%), road feel (texture/hit) active {roadPct:F0}% of time");
             Console.WriteLine("  wheel   vel p50/p90/p99/max          exc p50/p90/p99/max");
             for (int i = 0; i < W; i++)
             {
@@ -47,9 +48,35 @@ public static class Ets2RecAnalyzer
             }
         }
 
-        int road = Edges(rows.Select(r => r.Active), "road"), gear = Edges(rows.Select(r => r.Active), "gear"), crash = Edges(rows.Select(r => r.Active), "crash");
-        double all = 100.0 * rows.Count(r => Has(r.Active, "road")) / rows.Count;
-        Console.WriteLine($"\nEvents (rising edges): road={road}, gear={gear}, crash={crash}; road rumble active {all:F0}% of all rows");
+        int gear = Edges(rows.Select(r => r.Active), "gear"), crash = Edges(rows.Select(r => r.Active), "crash");
+        double all = 100.0 * rows.Count(r => Has(r.Active, "tex") || Has(r.Active, "hit")) / rows.Count;
+        Console.WriteLine($"\nEvents (rising edges): texture={Edges(rows.Select(r => r.Active), "tex")}, hit={Edges(rows.Select(r => r.Active), "hit")}, gear={gear}, crash={crash}; road feel active {all:F0}% of all rows");
+
+        if (rows.Any(r => r.Subst.Length > 0))
+        {
+            // Time is attributed to every distinct substance under the wheels; events to the primary one (first non-road, else first).
+            var time = new SortedDictionary<string, double>();
+            var tex = new Dictionary<string, int>(); var hit = new Dictionary<string, int>();
+            string prevPrimary = ""; bool pTex = false, pHit = false;
+            for (int i = 0; i < rows.Count; i++)
+            {
+                var r = rows[i];
+                double dt = i == 0 ? 0 : Math.Min(rows[i].T - rows[i - 1].T, 250) / 1000.0;
+                foreach (var n in r.Subst.Distinct()) time[n] = time.GetValueOrDefault(n) + dt;
+                string primary = r.Subst.FirstOrDefault(n => Ets2Haptics.Classify(n) is { Rumble: true } or { Rough: true }) ?? r.Subst.FirstOrDefault() ?? "";
+                bool t = Has(r.Active, "tex"), h = Has(r.Active, "hit");
+                if (t && (!pTex || primary != prevPrimary)) tex[primary] = tex.GetValueOrDefault(primary) + 1;
+                if (h && !pHit) hit[primary] = hit.GetValueOrDefault(primary) + 1;
+                prevPrimary = primary; pTex = t; pHit = h;
+            }
+            Console.WriteLine("\nSubstances (time under wheels, texture events, hit events):");
+            foreach (var (n, t) in time)
+            {
+                var (known, rumble, rough) = Ets2Haptics.Classify(n);
+                string kind = rumble ? "rumble" : rough ? "rough" : known ? "road" : "UNKNOWN->road";
+                Console.WriteLine($"  {n,-16} {t,7:F1} s  {kind,-14} texture={tex.GetValueOrDefault(n)} hit={hit.GetValueOrDefault(n)}");
+            }
+        }
         return 0;
     }
 

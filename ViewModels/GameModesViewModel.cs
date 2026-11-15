@@ -212,7 +212,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     public string StatusReport() =>
         $"listening={_listener.Listening} port={Ets2Packet.Port} packets={_listener.PacketCount} rejected={_listener.RejectedCount} " +
         $"lastVersion={_listener.ProtocolVersion} lastRejectVersion={_listener.LastRejectVersion} lastRejectReason={_listener.LastRejectReason ?? "-"} " +
-        $"ageMs={_listener.LastPacketAgeMs} connected={_listener.Listening && _ets2.Connected} modeRunning={IsRunning} error={_listener.Error ?? "-"}";
+        $"substances={_listener.SubstanceNames.Length}[{string.Join(",", _listener.SubstanceNames)}] ageMs={_listener.LastPacketAgeMs} connected={_listener.Listening && _ets2.Connected} modeRunning={IsRunning} error={_listener.Error ?? "-"}";
 
     public void Dispose()
     {

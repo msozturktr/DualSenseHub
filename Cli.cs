@@ -199,7 +199,7 @@ public static class Cli
         int secs = 30;
         foreach (var a in args) if (a.StartsWith("--seconds=") && int.TryParse(a[10..], out var s)) secs = s;
         var settings = new Ets2Settings { EngineRumble = true };
-        var h = new Ets2Haptics();
+        var h = new Ets2Haptics { SubstanceNames = Ets2Sim.SubstanceNames };
         var totals = new SortedDictionary<string, int>();
         int ticks = 0, rumbleSends = 0, triggerSends = 0, rSends = 0;
         byte lastS = 0, lastW = 0;
@@ -210,12 +210,20 @@ public static class Cli
         uint seq = 0;
         int strayCrash = 0, crashTicks = 0;
         bool crashOnFirstFrame = false;
+        // Road-feel segment checks (30 s sim cycle): smooth road, hard hit, gravel, rumble strip.
+        int roadTicks = 0, roadOut = 0, hitWindowHits = 0, gravelTicks = 0, gravelTex = 0, rumbleTicks = 0, rumbleToggles = 0, rumbleOut = 0;
+        byte prevRumbleWeak = 0; string gravelName = "";
         Console.WriteLine("t(s)  strongMax weakMax  L2        R2        features");
         for (int ms = 0; ms < secs * 1000; ms += 33)
         {
             var p = Ets2Sim.Frame(ms / 1000.0, ++seq);
             var f = h.Update(p, true, settings, ms);
             ticks++;
+            double cyc = ms / 1000.0 % 30;
+            if (cyc is >= 1 and < 10) { roadTicks++; if (f.Active.Contains("tex") || f.Active.Contains("hit")) roadOut++; }
+            if (cyc is >= 10.5 and < 10.8 && f.Active.Contains("hit")) hitWindowHits++;
+            if (cyc is >= 13 and < 19) { gravelTicks++; if (f.Active.Contains("tex") && f.Strong > 0 && f.Weak > 0) gravelTex++; gravelName = h.CurrentSurface; }
+            if (cyc is >= 21 and < 23) { rumbleTicks++; if (f.Weak > 0) rumbleOut++; if ((f.Weak > 0) != (prevRumbleWeak > 0)) rumbleToggles++; prevRumbleWeak = f.Weak; }
             if (f.Strong != lastS || f.Weak != lastW) { rumbleSends++; lastS = f.Strong; lastW = f.Weak; }
             if (!f.Left.SameAs(lastL) || !f.Right.SameAs(lastR)) { triggerSends++; if (!f.Right.SameAs(lastR)) rSends++; lastL = f.Left; lastR = f.Right; }
             maxS = Math.Max(maxS, f.Strong); maxW = Math.Max(maxW, f.Weak);
@@ -258,12 +266,20 @@ public static class Cli
         Console.WriteLine($"Crash jolt: {crashTicks} ticks, outside crash windows: {strayCrash}, on first frame: {crashOnFirstFrame} -> {crashOk}");
         bool detOk = CrashDetectionChecks(settings);
         bool gaugeOk = GaugeChecks();
-        string[] need = ["road", "gear", "brake", "parking", "kickdown", "engine", "abs"];
+        string[] need = ["tex", "hit", "gear", "brake", "parking", "kickdown", "engine", "abs"];
         var missing = need.Where(n => !totals.ContainsKey(n)).ToArray();
         bool r2static = rSends == 1 && lastR != null && lastR.Mode == 0x25 && !totals.ContainsKey("rpm-limit");
+        bool roadOk = roadTicks > 0 && roadOut == 0;
+        bool hitOk = hitWindowHits > 0;
+        bool gravelOk = gravelTicks > 0 && gravelTex >= gravelTicks * 0.95 && gravelName == "gravel";
+        bool rumbleOk = rumbleTicks > 0 && rumbleToggles >= rumbleTicks * 0.6 && rumbleOut > 0 && rumbleOut < rumbleTicks;
+        var names = Ets2Packet.TryParseSubstances(Ets2Packet.SubstanceTableBytes(Ets2Sim.SubstanceNames), out var rtNames) && rtNames.SequenceEqual(Ets2Sim.SubstanceNames);
+        bool v5ok = Ets2Packet.TryParse(Ets2Sim.Frame(14, 1).ToBytes(), out var v5p) && v5p.Substance![0] == 1;
+        Console.WriteLine($"Road feel: smooth road silent {roadOk} ({roadOut}/{roadTicks} ticks), hard hit {hitOk}, gravel texture {gravelOk} ({gravelTex}/{gravelTicks}, zemin '{gravelName}'), rumble strip pulses {rumbleOk} ({rumbleToggles} toggles/{rumbleTicks} ticks); substance table round trip {names}, v5 packet {v5ok}");
+        bool surfOk = roadOk && hitOk && gravelOk && rumbleOk && names && v5ok;
         Console.WriteLine($"R2 static kickdown (1 send, weapon, no rpm-limit): {r2static}");
         Console.WriteLine(missing.Length == 0 ? "All features triggered." : "NOT triggered: " + string.Join(", ", missing));
-        return missing.Length == 0 && idleOk(paused) && idleOk(gone) && r2static && v2ok && v1ok && v1short && v4ok && v3ok && v4rt && crashOk && detOk && gaugeOk ? 0 : 1;
+        return missing.Length == 0 && idleOk(paused) && idleOk(gone) && r2static && v2ok && v1ok && v1short && v4ok && v3ok && v4rt && crashOk && detOk && gaugeOk && surfOk ? 0 : 1;
     }
 
     private static HapticFrame Run(Ets2Haptics h, Ets2Packet p, Ets2Settings s, ref long ms, ref uint seq)

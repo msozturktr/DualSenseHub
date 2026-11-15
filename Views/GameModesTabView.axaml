@@ -45,11 +45,11 @@
                 <TextBlock Text="Titreşim ve tetikler" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,0" />
                 <TextBlock Text="Her özellik ayrı açılıp kapatılır; kaydırıcı şiddeti (%0-100) belirler. Duraklatma, bağlantı kopması veya mod durunca titreşim kesilir, tetikler serbest kalır." Opacity="0.7" TextWrapping="Wrap" />
                 <Grid ColumnDefinitions="380,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="6">
-                    <CheckBox Grid.Row="0" Content="Yol hissi (süspansiyon darbeleri, iniş)" IsChecked="{Binding RoadFeel}" />
+                    <CheckBox Grid.Row="0" Content="Yol hissi (zemin dokusu: çakıl/toprak/rampa şeridi; sert çukur ve iniş darbeleri)" IsChecked="{Binding RoadFeel}" />
                     <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8">
                         <Slider Minimum="0" Maximum="100" Value="{Binding RoadFeelLevel}" Width="220" />
                         <TextBlock Text="Hassasiyet" VerticalAlignment="Center" Opacity="0.7" />
-                        <Slider Minimum="0" Maximum="100" Value="{Binding RoadSensitivity}" Width="140" ToolTip.Tip="Yüksek: küçük derzler de titretir. Düşük: yalnız sert çukur/kasis." />
+                        <Slider Minimum="0" Maximum="100" Value="{Binding RoadSensitivity}" Width="140" ToolTip.Tip="Yüksek: daha hafif çukur/kasis darbeleri de hissedilir. Düşük: yalnız çok sert darbeler. Zemin dokusu bundan etkilenmez." />
                     </StackPanel>
                     <CheckBox Grid.Row="1" Content="Vites geçişi (kısa vuruş)" IsChecked="{Binding GearShift}" />
                     <Slider Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding GearShiftLevel}" Width="220" HorizontalAlignment="Left" />

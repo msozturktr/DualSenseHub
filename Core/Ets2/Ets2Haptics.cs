@@ -15,23 +15,24 @@ public sealed class WheelDiagnostics
 
 /// <summary>
 /// Pure haptics computation from the telemetry packet stream and <see cref="Ets2Settings"/>: no I/O, time is passed in.
-/// Call <see cref="Update"/> at about 30 Hz. Features: road feel, gear shift kick, brake trigger, throttle kickdown, engine rumble, ABS.
+/// Call <see cref="Update"/> at about 30 Hz. Features: road feel (surface texture + hard hits), gear shift kick, brake trigger, throttle kickdown, engine rumble, ABS.
 /// </summary>
 public sealed class Ets2Haptics
 {
-    private const double DecayMs = 150;       // road pulse envelope time constant
-    // Recorded highway driving: road seams give 0.4-2 m/s excess every 2-4 s, so the deadzone is set by the sensitivity
-    // setting (0.2-1.2 m/s) and full strength needs a hard hit; a soft curve keeps ordinary seams subtle.
-    private const double DeflectionDeadzoneMin = 0.2, DeflectionDeadzoneMax = 1.2;
-    private const double DeflectionFull = 3.0;      // m/s above baseline that maps to a full pulse
-    private const double RoadCurve = 0.7;
+    // Road feel has two parts: a surface texture chosen by the substance under the wheels (suspension deflection does not track
+    // perceived roughness: highway seams give 0.4-2 m/s spikes), and rare hard hits from suspension speed (kerbs, potholes, landings).
+    private const double HitThresholdMax = 3.0, HitThresholdMin = 1.4; // m/s above baseline at sensitivity 0 / 100 %
+    private const double HitFull = 5.0;             // m/s above baseline that maps to a full hit
+    private const long HitMs = 70;                  // crisp pulse on the strong motor
     private const double BaselineTau = 1.0;         // s, running average of suspension speed (normal body motion)
+    private const double TextureMinKmh = 5, TextureFullKmh = 60;
+    private const double RoughBase = 0.25, RoughSpeedGain = 0.45;
+    private const double RumbleBase = 0.45, RumbleSpeedGain = 0.5;
+    private const long RumblePeriodMs = 67;         // ~15 Hz rumble strip
     private const double MinRoadSpeedKmh = 5, MinAirborneS = 0.3, MinDt = 0.033;
     private const long KickMs = 45, AbsHoldMs = 120;
     private const double GearKickPeak = 0.35;        // strong motor (both sides of the grip), kept short so it reads as a tick
-    private const double RoadStrongScale = 0.7, RoadWeakScale = 0.8;
-    private const double RoadMinOutput = 0.12;       // pulses that would end up below this read as constant buzz
-    private const long RoadRefractoryMs = 120;       // minimum gap between new pulses per side so they read as discrete bumps
+    private const long HitRefractoryMs = 120;        // minimum gap between hits so they read as discrete bumps
     private const double PercentToUnit = 0.01;
 
     private readonly float[] _prevSusp = new float[Ets2Packet.MaxWheels];
@@ -41,8 +42,16 @@ public sealed class Ets2Haptics
     private readonly double[] _airS = new double[Ets2Packet.MaxWheels];
     private bool _hasPrev;
     private long _lastSeq = -1, _lastPktMs, _lastTickMs;
-    private double _envL, _envR;
-    private long _lastPulseL = -100000, _lastPulseR = -100000;
+    private enum Surface { Road, Rough, Rumble }
+    private Surface _surfL, _surfR;                  // worst surface under the wheels on each side
+    private long _hitUntil = -1, _lastHit = -100000;
+    private double _hitAmp;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> LoggedUnknown = new();
+
+    /// <summary>Substance name table (index = substance id) from the plugin's DSHS datagram; empty until received.</summary>
+    public string[] SubstanceNames { get; set; } = [];
+    /// <summary>Substance under the wheels in the last packet (the first non-road one, else the first wheel's), "" when unknown.</summary>
+    public string CurrentSurface { get; private set; } = "";
     private int _lastGear = int.MinValue;
     private long _kickUntil = -1, _absUntil = -1;
     // Crash detection state
@@ -59,7 +68,7 @@ public sealed class Ets2Haptics
 
     private void Reset()
     {
-        _hasPrev = false; _hasPrevCrash = false; _crashStart = -1; _envL = _envR = 0; _lastPulseL = _lastPulseR = -100000; _kickUntil = _absUntil = -1; _lastSeq = -1;
+        _hasPrev = false; _hasPrevCrash = false; _crashStart = -1; _surfL = _surfR = Surface.Road; _hitUntil = -1; _lastHit = -100000; CurrentSurface = ""; _kickUntil = _absUntil = -1; _lastSeq = -1;
     }
 
     public HapticFrame Update(Ets2Packet p, bool connected, Ets2Settings s, long nowMs)
@@ -68,14 +77,12 @@ public sealed class Ets2Haptics
 
         double tickDt = Math.Clamp(nowMs - _lastTickMs, 0, 200);
         _lastTickMs = nowMs;
-        double decay = Math.Exp(-tickDt / DecayMs);
-        _envL *= decay; _envR *= decay;
 
         if (p.Seq != _lastSeq)
         {
             double pktDt = (nowMs - _lastPktMs) / 1000.0;
             Diag.Clear();
-            if (_hasPrev && pktDt > 0.005 && pktDt < 0.25) Road(p, pktDt, nowMs, s.RoadFeelLevel * PercentToUnit, s.RoadSensitivity * PercentToUnit);
+            if (_hasPrev && pktDt > 0.005 && pktDt < 0.25) Road(p, pktDt, nowMs, s.RoadSensitivity * PercentToUnit);
             Crash(p, pktDt, nowMs);
             Gear(p, nowMs);
             for (int i = 0; i < Ets2Packet.MaxWheels; i++) _prevSusp[i] = p.Susp != null && i < p.Susp.Length ? p.Susp[i] : 0;
@@ -85,11 +92,20 @@ public sealed class Ets2Haptics
         double strong = 0, weak = 0;
         var active = new List<string>(4);
         double lvRoad = s.RoadFeelLevel * PercentToUnit;
-        if (s.RoadFeel && (_envL > 0.02 || _envR > 0.02))
+        if (s.RoadFeel)
         {
-            strong = Math.Max(strong, _envL * lvRoad * RoadStrongScale);
-            weak = Math.Max(weak, _envR * lvRoad * 0.8);
-            active.Add("road");
+            double sf = Math.Clamp((p.SpeedKmh - TextureMinKmh) / (TextureFullKmh - TextureMinKmh), 0, 1);
+            double tl = Texture(_surfL, sf, nowMs), tr = Texture(_surfR, sf, nowMs);
+            if (tl > 0 || tr > 0)
+            {
+                strong = Math.Max(strong, tl * lvRoad); weak = Math.Max(weak, tr * lvRoad);
+                active.Add("tex");
+            }
+            if (nowMs < _hitUntil)
+            {
+                strong = Math.Max(strong, _hitAmp * lvRoad);
+                active.Add("hit");
+            }
         }
         if (s.CrashRumble && _crashStart >= 0 && nowMs < _crashStart + _crashDur)
         {
@@ -145,36 +161,81 @@ public sealed class Ets2Haptics
 
     public WheelDiagnostics Diag { get; } = new();
 
-    private void Road(Ets2Packet p, double dt, long nowMs, double lvRoad, double sensitivity)
+    /// <summary>Maps a substance name to its feel by substring; unknown names count as road (logged once to stderr).</summary>
+    public static (bool Known, bool Rumble, bool Rough) Classify(string name)
+    {
+        var n = name.ToLowerInvariant();
+        if (n.Contains("rumble") || n.Contains("kerb") || n.Contains("curb")) return (true, true, false);
+        foreach (var k in new[] { "dirt", "gravel", "mud", "grass", "sand", "snow", "offroad" })
+            if (n.Contains(k)) return (true, false, true);
+        foreach (var k in new[] { "road", "asphalt", "concrete", "tarmac", "highway", "street", "pavement", "none" })
+            if (n.Contains(k)) return (true, false, false);
+        return (false, false, false);
+    }
+
+    private string NameOf(Ets2Packet p, int wheel)
+    {
+        if (p.Substance == null || wheel >= p.Substance.Length) return "";
+        int idx = p.Substance[wheel];
+        var names = SubstanceNames;
+        return idx < names.Length ? names[idx] : "";
+    }
+
+    /// <summary>Amplitude (before the level setting) of the texture for a side; rumble strips pulse at about 15 Hz.</summary>
+    private static double Texture(Surface k, double speedFactor, long nowMs)
+    {
+        if (speedFactor <= 0) return 0;
+        return k switch
+        {
+            Surface.Rough => RoughBase + RoughSpeedGain * speedFactor,
+            Surface.Rumble => nowMs % RumblePeriodMs < RumblePeriodMs / 2 ? RumbleBase + RumbleSpeedGain * speedFactor : 0,
+            _ => 0,
+        };
+    }
+
+    private void Road(Ets2Packet p, double dt, long nowMs, double sensitivity)
     {
         if (p.Susp == null || p.WheelCount == 0) return;
         bool sidesKnown = p.LeftMask != 0 && p.LeftMask != (1 << p.WheelCount) - 1;
         bool moving = p.SpeedKmh >= MinRoadSpeedKmh;
         dt = Math.Max(dt, MinDt); // back-to-back packets (flag changes) would otherwise amplify tiny deltas
         double a = Math.Min(1, dt / BaselineTau);
+        double threshold = HitThresholdMax - (HitThresholdMax - HitThresholdMin) * Math.Clamp(sensitivity, 0, 1);
+        Surface sl = Surface.Road, sr = Surface.Road;
+        string primary = "", first = "";
         for (int i = 0; i < p.WheelCount && i < Ets2Packet.MaxWheels; i++)
         {
             bool now = (p.GroundMask >> i & 1) != 0, was = (_prevGround >> i & 1) != 0;
+            bool isLeft = (p.LeftMask >> i & 1) != 0;
+            if (now)
+            {
+                string name = NameOf(p, i);
+                var (known, rumble, rough) = Classify(name);
+                if (name.Length > 0 && !known && LoggedUnknown.TryAdd(name, 0))
+                    Console.Error.WriteLine($"ETS2: unknown substance '{name}', treated as road");
+                if (first.Length == 0) first = name;
+                var k = rumble ? Surface.Rumble : rough ? Surface.Rough : Surface.Road;
+                if (k != Surface.Road && primary.Length == 0) primary = name;
+                if (!sidesKnown || isLeft) sl = (Surface)Math.Max((int)sl, (int)k);
+                if (!sidesKnown || !isLeft) sr = (Surface)Math.Max((int)sr, (int)k);
+            }
             double x = 0;
             if (now && was)
             {
-                // Pulse only on suspension speed well above this wheel's normal motion, so steady body sway never buzzes.
+                // A hit is suspension speed far above this wheel's normal motion; seams and body sway stay below the threshold.
                 double v = Math.Abs(p.Susp[i] - _prevSusp[i]) / dt;
                 double excess = v - _suspBase[i];
                 Diag.Vel[i] = v; Diag.Base[i] = _suspBase[i]; Diag.Excess[i] = excess;
                 _suspBase[i] += (v - _suspBase[i]) * a;
-                double dz = DeflectionDeadzoneMax - (DeflectionDeadzoneMax - DeflectionDeadzoneMin) * Math.Clamp(sensitivity, 0, 1);
-                if (moving && excess > dz) x = Math.Pow(Math.Clamp((excess - dz) / (DeflectionFull - dz), 0, 1), RoadCurve);
+                if (moving && excess > threshold) x = 0.6 + 0.4 * Math.Clamp((excess - threshold) / (HitFull - threshold), 0, 1);
             }
             else if (now && !was && moving && _airS[i] >= MinAirborneS) x = 0.9; // real landing, not a lift axle or flicker
             _airS[i] = now ? 0 : _airS[i] + dt;
-            if (x <= 0) continue;
-            bool isLeft = (p.LeftMask >> i & 1) != 0;
-            if ((!sidesKnown || isLeft) && x * lvRoad * RoadStrongScale >= RoadMinOutput && nowMs - _lastPulseL >= RoadRefractoryMs)
-            { _envL = Math.Max(_envL, x); _lastPulseL = nowMs; }
-            if ((!sidesKnown || !isLeft) && x * lvRoad * RoadWeakScale >= RoadMinOutput && nowMs - _lastPulseR >= RoadRefractoryMs)
-            { _envR = Math.Max(_envR, x); _lastPulseR = nowMs; }
+            if (x > 0 && nowMs - _lastHit >= HitRefractoryMs)
+            { _hitAmp = x; _hitUntil = nowMs + HitMs; _lastHit = nowMs; }
         }
+        _surfL = sl; _surfR = sr;
+        CurrentSurface = primary.Length > 0 ? primary : first;
     }
 
     /// <summary>

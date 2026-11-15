@@ -1,7 +1,7 @@
 # DualSense Hub ETS2 UDP protocol (version 4)
 
 The plugin sends one datagram per update (about 30 Hz, plus immediately when a flag changes) to `127.0.0.1:47555`.
-Fixed 148-byte packet (version 4). Version-1 packets (36 bytes, or 32 in early builds without throttle) are still accepted; missing fields read as 0. Little-endian, packed. The magic stays `DSH1`; the version byte decides the layout.
+Fixed 184-byte packet (version 5). Version-1 packets (36 bytes, or 32 in early builds without throttle) are still accepted; missing fields read as 0. Little-endian, packed. The magic stays `DSH1`; the version byte decides the layout.
 
 | Offset | Type    | Field         | Notes |
 |-------:|---------|---------------|-------|
@@ -52,6 +52,15 @@ Version 4 fields:
 | 173    | u8   | retarder_steps | config `retarder.steps` (0 = no retarder) |
 | 174    | u16  | reserved | 0 |
 
+Version 5 fields:
+
+| Offset | Type | Field | Notes |
+|-------:|------|-------|-------|
+| 176    | u8[8] | substance | `truck.wheel.substance` per wheel: index into the substance name table |
+
+Substance name table (separate datagram, magic `DSHS`): `"DSHS"`, u8 count, then `count` NUL-terminated names (index = position), from the
+`substances` configuration event (attribute `id`). Sent when the configuration arrives and about every 5 s so a late-started app learns it.
+
 Parsers read the prefix they know: a packet with a higher version is accepted and the unknown tail is ignored; older packets leave newer fields at 0.
 
 Surface speed of a wheel = `abs(vel) * 2 * pi * radius` (m/s). Assumptions: vehicle space has +x to the right, so x < 0 means a left wheel;
@@ -60,7 +69,7 @@ indices beyond the truck's real wheel count fail to register and stay 0.
 
 Channels used: `truck.light.lblinker`, `truck.light.rblinker`, `truck.hazard.warning`, `truck.light.brake`, `truck.engine.enabled`,
 `truck.electric.enabled`, `truck.speed`, `truck.engine.rpm`, `truck.fuel.amount`, `truck.effective.throttle`, (v3) `truck.input.throttle`, (v4) `truck.wear.*`, `truck.local.acceleration.linear`, `truck.cruise_control`, `truck.brake.retarder`, and (v2) `truck.effective.brake`,
-`truck.brake.air.pressure`, `truck.brake.parking`, `truck.engine.gear`, indexed `truck.wheel.suspension.deflection`, `truck.wheel.angular_velocity`, `truck.wheel.on_ground`. The switch-state channels are not used because
+`truck.brake.air.pressure`, `truck.brake.parking`, `truck.engine.gear`, (v5) indexed `truck.wheel.substance`, indexed `truck.wheel.suspension.deflection`, `truck.wheel.angular_velocity`, `truck.wheel.on_ground`. The switch-state channels are not used because
 the light channels already follow the blink cycle.
 
 Plugin source uses its own minimal C declarations of the SCS SDK ABI (`sdk/scs_min.h`) because the official headers are C++ only.

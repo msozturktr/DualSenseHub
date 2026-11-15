@@ -32,7 +32,7 @@ public sealed class Ets2Recorder : IDisposable
         var sb = new StringBuilder("t_ms,speed_kmh,rpm,gear,throttle,brake,ground,wheels");
         foreach (var n in new[] { "susp", "vel", "base", "exc" })
             for (int i = 0; i < Ets2Packet.MaxWheels; i++) sb.Append(',').Append(n).Append(i);
-        return sb.Append(",wear,accel,strong,weak,active").ToString();
+        return sb.Append(",wear,accel,strong,weak,active,subst").ToString();
     }
 
     public string Start(int seconds)
@@ -80,6 +80,7 @@ public sealed class Ets2Recorder : IDisposable
             if (p.Paused) return;
             _activeMs += Math.Min(delta, 250);
             if (_activeMs >= _targetMs) { StopLocked(); return; }
+            _haptics.SubstanceNames = _listener.SubstanceNames;
             var f = _haptics.Update(p, true, _settings(), now);
             var d = _haptics.Diag;
             var sb = new StringBuilder(256);
@@ -89,7 +90,13 @@ public sealed class Ets2Recorder : IDisposable
             foreach (var arr in new[] { d.Vel, d.Base, d.Excess })
                 for (int i = 0; i < Ets2Packet.MaxWheels; i++) sb.Append(',').Append(F(arr[i]));
             sb.Append(',').Append(F(p.WearTotal)).Append(',').Append(F(p.AccelMagnitude)).Append(',').Append(f.Strong).Append(',').Append(f.Weak)
-              .Append(',').Append(f.Active.Replace(',', ';'));
+              .Append(',').Append(f.Active.Replace(',', ';')).Append(',');
+            for (int i = 0; i < p.WheelCount && i < Ets2Packet.MaxWheels; i++)
+            {
+                int idx = p.Substance != null && i < p.Substance.Length ? p.Substance[i] : 0;
+                var names = _listener.SubstanceNames;
+                sb.Append(i > 0 ? "|" : "").Append(idx < names.Length ? names[idx].Replace(',', '_').Replace('|', '_') : "?" + idx);
+            }
             _w.WriteLine(sb.ToString());
             _rows++;
         }
