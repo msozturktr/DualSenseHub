@@ -40,6 +40,8 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _blinkerColor = "";
     [ObservableProperty] private string _brakeColor = "";
     [ObservableProperty] private string _lowFuelColor = "";
+    [ObservableProperty] private string _gradientLowColor = "";
+    [ObservableProperty] private string _gradientHighColor = "";
 
     [ObservableProperty] private bool _roadFeel;
     [ObservableProperty] private double _roadFeelLevel;
@@ -72,6 +74,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
         Blinkers = s.Blinkers; Brake = s.Brake; EngineOff = s.EngineOff; LowFuel = s.LowFuel; Gradient = s.Gradient;
         DimWhenPaused = s.DimWhenPaused; AutoStart = s.AutoStart; SourceIndex = (int)s.Source;
         BlinkerColor = s.BlinkerColor; BrakeColor = s.BrakeColor; LowFuelColor = s.LowFuelColor;
+        GradientLowColor = s.GradientLowColor; GradientHighColor = s.GradientHighColor;
         RoadFeel = s.RoadFeel; RoadFeelLevel = s.RoadFeelLevel;
         GearShift = s.GearShift; GearShiftLevel = s.GearShiftLevel;
         GasTrigger = s.GasTrigger; GasTriggerLevel = s.GasTriggerLevel; KickdownPoint = s.KickdownPoint;
@@ -101,6 +104,8 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     partial void OnBlinkerColorChanged(string value) => Edit(s => s.BlinkerColor = value);
     partial void OnBrakeColorChanged(string value) => Edit(s => s.BrakeColor = value);
     partial void OnLowFuelColorChanged(string value) => Edit(s => s.LowFuelColor = value);
+    partial void OnGradientLowColorChanged(string value) => Edit(s => s.GradientLowColor = value);
+    partial void OnGradientHighColorChanged(string value) => Edit(s => s.GradientHighColor = value);
 
     partial void OnRoadFeelChanged(bool value) => Edit(s => s.RoadFeel = value);
     partial void OnRoadFeelLevelChanged(double value) => Edit(s => s.RoadFeelLevel = (int)Math.Round(value));

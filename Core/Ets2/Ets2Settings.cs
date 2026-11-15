@@ -8,7 +8,7 @@ public enum LedGauge { Off, Fuel, Cruise, Retarder }
 /// <summary>User-configurable ETS2 rules; persisted in ets2.json.</summary>
 public sealed class Ets2Settings
 {
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
     /// <summary>Settings schema version; 0 when the file predates versioning (see <see cref="Migrate"/>).</summary>
     public int Version { get; set; } = CurrentVersion;
     public bool Blinkers { get; set; } = true;
@@ -52,6 +52,9 @@ public sealed class Ets2Settings
     public string BlinkerColor { get; set; } = "FF8C00";
     public string BrakeColor { get; set; } = "FF0000";
     public string LowFuelColor { get; set; } = "FF5000";
+    /// <summary>Gradient end colors; defaults stay clear of the red/amber used by brake and blinkers.</summary>
+    public string GradientLowColor { get; set; } = "00C8FF";
+    public string GradientHighColor { get; set; } = "B400FF";
 
     /// <summary>Upgrades settings loaded from an older file in place.</summary>
     public void Migrate()
@@ -63,6 +66,7 @@ public sealed class Ets2Settings
             if (TriggersLevel is { } l) { GasTriggerLevel = BrakeTriggerLevel = l; }
         }
         // Version 3 added CrashRumble/CrashRumbleLevel/Gauge; missing keys already deserialize to their defaults.
+        // Version 4 replaced the fixed green→red gradient with GradientLowColor/GradientHighColor (defaults apply).
         Triggers = null; TriggersLevel = null;
         Version = CurrentVersion;
     }

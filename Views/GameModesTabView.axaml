@@ -21,7 +21,7 @@
 
             <StackPanel Spacing="8" IsVisible="{Binding IsEts2Selected}">
                 <TextBlock Text="Kurallar" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,0" />
-                <TextBlock Text="Öncelik: sinyal &gt; fren &gt; motor kapalı &gt; düşük yakıt &gt; hız/devir geçişi." Opacity="0.7" TextWrapping="Wrap" />
+                <TextBlock Text="Öncelik: sinyal &gt; fren &gt; motor kapalı &gt; düşük yakıt &gt; gaz/hız/devir renk geçişi." Opacity="0.7" TextWrapping="Wrap" />
                 <Grid ColumnDefinitions="260,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="6">
                     <CheckBox Grid.Row="0" Content="Sinyal / dörtlü (turuncu, yanıp sönme + sol/sağ LED)" IsChecked="{Binding Blinkers}" />
                     <TextBox Grid.Row="0" Grid.Column="2" Text="{Binding BlinkerColor}" Width="90" Watermark="RRGGBB" />
@@ -30,7 +30,12 @@
                     <CheckBox Grid.Row="2" Content="Motor kapalıyken ışık kapalı" IsChecked="{Binding EngineOff}" />
                     <CheckBox Grid.Row="3" Content="Düşük yakıt (&lt;%15, dururken nabız)" IsChecked="{Binding LowFuel}" />
                     <TextBox Grid.Row="3" Grid.Column="2" Text="{Binding LowFuelColor}" Width="90" Watermark="RRGGBB" />
-                    <CheckBox Grid.Row="4" Content="Yeşil → kırmızı geçişi" IsChecked="{Binding Gradient}" />
+                    <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="6">
+                        <CheckBox Content="Renk geçişi" IsChecked="{Binding Gradient}" />
+                        <TextBox Text="{Binding GradientLowColor}" Width="90" Watermark="RRGGBB" />
+                        <TextBlock Text="→" VerticalAlignment="Center" />
+                        <TextBox Text="{Binding GradientHighColor}" Width="90" Watermark="RRGGBB" />
+                    </StackPanel>
                     <ComboBox Grid.Row="4" Grid.Column="2" ItemsSource="{Binding SourceOptions}" SelectedIndex="{Binding SourceIndex}" Width="130" />
                     <CheckBox Grid.Row="5" Content="Oyun duraklatılınca karart" IsChecked="{Binding DimWhenPaused}" />
                     <TextBlock Grid.Row="6" Text="Oyuncu LED göstergesi (sinyal yokken)" VerticalAlignment="Center" />

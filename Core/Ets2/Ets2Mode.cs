@@ -127,7 +127,10 @@ public sealed class Ets2Mode : IGameMode, IDisposable
                 GradientSource.Rpm => p.Rpm / (p.RpmLimit > 0 ? p.RpmLimit : 2500),
                 _ => p.ColorThrottle,
             };
-            (r, g, b) = Hsv(120 * (1 - Math.Clamp(t, 0, 1)));
+            t = Math.Clamp(t, 0, 1);
+            var lo = Ets2Settings.ParseHex(s.GradientLowColor, (0, 200, 255));
+            var hi = Ets2Settings.ParseHex(s.GradientHighColor, (180, 0, 255));
+            (r, g, b) = ((byte)(lo.R + (hi.R - lo.R) * t), (byte)(lo.G + (hi.G - lo.G) * t), (byte)(lo.B + (hi.B - lo.B) * t));
         }
 
         if (!blinkerActive) mask = GaugeMask(p, s, nowMs);
@@ -158,13 +161,6 @@ public sealed class Ets2Mode : IGameMode, IDisposable
         }
     }
 
-    /// <summary>Hue 0 (red) to 120 (green) at full saturation/value.</summary>
-    private static (byte, byte, byte) Hsv(double h)
-    {
-        double r = h < 60 ? 1 : (120 - h) / 60;
-        double g = h < 60 ? h / 60 : 1;
-        return ((byte)(r * 255), (byte)(g * 255), 0);
-    }
 
     public void Dispose() => Stop();
 }
