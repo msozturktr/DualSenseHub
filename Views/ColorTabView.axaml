@@ -1,0 +1,67 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DualSenseHub.ViewModels"
+             x:Class="DualSenseHub.Views.ColorTabView"
+             x:DataType="vm:ColorTabViewModel">
+    <ScrollViewer>
+        <Grid ColumnDefinitions="Auto,*" Margin="16" ColumnSpacing="24">
+            <StackPanel Spacing="8" IsVisible="{Binding ShowColor}">
+                <TextBlock Text="Renk" FontSize="16" FontWeight="SemiBold" />
+                <ColorView Color="{Binding Color, Mode=TwoWay}" IsAlphaVisible="False"
+                           IsColorPaletteVisible="False" Width="340" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Spacing="12">
+                <TextBlock Text="Efekt" FontSize="16" FontWeight="SemiBold" />
+                <ComboBox ItemsSource="{Binding Effects}" SelectedItem="{Binding SelectedEffect}" MinWidth="220">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:EffectOption"><TextBlock Text="{Binding Label}" /></DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <TextBlock Text="Parlaklık" />
+                <Slider Minimum="0" Maximum="100" Value="{Binding Brightness}" />
+                <StackPanel IsVisible="{Binding ShowSpeed}">
+                    <TextBlock Text="Hız (periyot, saniye)" />
+                    <Slider Minimum="0.5" Maximum="10" Value="{Binding Speed}" />
+                </StackPanel>
+
+                <TextBlock Text="Hazır renkler" FontWeight="SemiBold" />
+                <ItemsControl ItemsSource="{Binding Presets}">
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:Preset">
+                            <Button Command="{Binding Apply}" Background="{Binding Brush}" Width="36" Height="36" Margin="0,0,6,6"
+                                    ToolTip.Tip="{Binding Name}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Text="Oyuncu LED'leri" FontWeight="SemiBold" Margin="0,8,0,0" />
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <CheckBox Content="1" IsChecked="{Binding P1}" />
+                    <CheckBox Content="2" IsChecked="{Binding P2}" />
+                    <CheckBox Content="3" IsChecked="{Binding P3}" />
+                    <CheckBox Content="4" IsChecked="{Binding P4}" />
+                    <CheckBox Content="5" IsChecked="{Binding P5}" />
+                    <ComboBox ItemsSource="{Binding PlayerBrightnessOptions}" SelectedIndex="{Binding PlayerBrightness}" />
+                </StackPanel>
+                <CheckBox Content="Mikrofon LED'i" IsChecked="{Binding MicLed}" />
+
+                <TextBlock Text="Profiller" FontWeight="SemiBold" Margin="0,8,0,0" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBox Text="{Binding ProfileName}" PlaceholderText="Profil adı" MinWidth="160" />
+                    <Button Content="Kaydet" Command="{Binding SaveProfileCommand}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ComboBox ItemsSource="{Binding ProfileNames}" SelectedItem="{Binding SelectedProfile}" MinWidth="160" />
+                    <Button Content="Yükle" Command="{Binding LoadProfileCommand}" />
+                    <Button Content="Sil" Command="{Binding DeleteProfileCommand}" />
+                </StackPanel>
+                <TextBlock Text="{Binding Message}" Opacity="0.75" />
+
+                <CheckBox Content="Açılışta son rengi geri yükle" IsChecked="{Binding RestoreOnStartup}" Margin="0,8,0,0" />
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

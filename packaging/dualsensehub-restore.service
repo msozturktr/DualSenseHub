@@ -1,0 +1,11 @@
+[Unit]
+Description=Restore DualSense lightbar color
+After=graphical-session.target bluetooth.target
+
+[Service]
+Type=oneshot
+# Waits up to 60 s for the controller to appear, applies the saved color, exits.
+ExecStart=%h/.local/bin/dualsensehub --apply-last --wait=60
+
+[Install]
+WantedBy=default.target

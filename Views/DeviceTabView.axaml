@@ -1,0 +1,43 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DualSenseHub.ViewModels"
+             xmlns:c="using:DualSenseHub.Controls"
+             x:Class="DualSenseHub.Views.DeviceTabView"
+             x:DataType="vm:DeviceTabViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="16" Spacing="14">
+            <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="4">
+                <TextBlock Grid.Row="0" Text="Model" Opacity="0.6" /><TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Model}" />
+                <TextBlock Grid.Row="1" Text="Batarya" Opacity="0.6" /><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Battery}" />
+                <TextBlock Grid.Row="2" Text="Bağlantı" Opacity="0.6" /><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Connection}" />
+                <TextBlock Grid.Row="3" Text="MAC" Opacity="0.6" /><SelectableTextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Mac}" />
+                <TextBlock Grid.Row="4" Text="Yazılım sürümü" Opacity="0.6" /><TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Firmware}" />
+                <TextBlock Grid.Row="5" Text="Donanım sürümü" Opacity="0.6" /><TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Hardware}" />
+                <TextBlock Grid.Row="6" Text="hidraw" Opacity="0.6" /><SelectableTextBlock Grid.Row="6" Grid.Column="1" Text="{Binding HidrawPath}" />
+                <TextBlock Grid.Row="7" Text="sysfs" Opacity="0.6" /><SelectableTextBlock Grid.Row="7" Grid.Column="1" Text="{Binding SysfsPaths}" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="8" Text="Durum" Opacity="0.6" /><TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding HidStatus}" />
+            </Grid>
+
+            <TextBlock Text="Canlı giriş testi" FontSize="16" FontWeight="SemiBold" />
+            <c:InputVisualizer State="{Binding Live}" HorizontalAlignment="Left" />
+            <TextBlock Text="{Binding SensorText}" FontFamily="monospace" />
+
+            <TextBlock Text="Titreşim testi" FontSize="16" FontWeight="SemiBold" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Zayıf motor" Command="{Binding RumbleCommand}" CommandParameter="weak" />
+                <Button Content="Güçlü motor" Command="{Binding RumbleCommand}" CommandParameter="strong" />
+                <Button Content="İkisi birden" Command="{Binding RumbleCommand}" CommandParameter="both" />
+            </StackPanel>
+
+            <TextBlock Text="Uyarlanabilir tetik testi (L2 + R2)" FontSize="16" FontWeight="SemiBold" />
+            <WrapPanel>
+                <Button Margin="0,0,8,8" Content="Kapalı" Command="{Binding TriggerCommand}" CommandParameter="off" />
+                <Button Margin="0,0,8,8" Content="Sürekli direnç" Command="{Binding TriggerCommand}" CommandParameter="continuous" />
+                <Button Margin="0,0,8,8" Content="Bölüm direnci" Command="{Binding TriggerCommand}" CommandParameter="section" />
+                <Button Margin="0,0,8,8" Content="Silah" Command="{Binding TriggerCommand}" CommandParameter="weapon" />
+                <Button Margin="0,0,8,8" Content="Titreşim" Command="{Binding TriggerCommand}" CommandParameter="vibration" />
+            </WrapPanel>
+            <TextBlock Text="{Binding TestMessage}" Foreground="#FF6B81" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -1,0 +1,21 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:DualSenseHub.ViewModels"
+        xmlns:v="using:DualSenseHub.Views"
+        x:Class="DualSenseHub.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="DualSense Hub" Width="1000" Height="760" MinWidth="720" MinHeight="520">
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="#B3261E" Padding="16,10" IsVisible="{Binding ShowPermissionBanner}">
+            <TextBlock Text="{Binding PermissionMessage}" TextWrapping="Wrap" Foreground="White" FontWeight="SemiBold" />
+        </Border>
+        <Border DockPanel.Dock="Bottom" Padding="16,8" Background="#14000000">
+            <TextBlock Text="{Binding StatusText}" Opacity="0.85" />
+        </Border>
+        <TabControl Margin="8">
+            <TabItem Header="Renk"><v:ColorTabView DataContext="{Binding Color}" /></TabItem>
+            <TabItem Header="Cihaz Bilgisi"><v:DeviceTabView DataContext="{Binding Device}" /></TabItem>
+            <TabItem Header="Oyun Modları"><v:GameModesTabView DataContext="{Binding Games}" /></TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>
