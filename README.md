@@ -45,5 +45,5 @@ Ayarlar ve profiller `~/.config/dualsensehub/` altında JSON olarak tutulur.
 ## Sınırlamalar
 
 - Donanım sürümü ve yazılım sürümü ham sayı olarak gösterilir.
-- ETS2 modu yalnızca Steam/Proton kurulumunda denendi; eklenti oyun içinde ilk kez yüklendiğinde `~/.local/share/Steam/steamapps/compatdata/227300/pfx/drive_c/users/steamuser/` altındaki oyun günlüğünden kontrol edilmelidir.
+- ETS2 modu henüz gerçek oyunda denenmedi; ilk açılışta eklentinin yüklendiğini oyunun konsol/günlük çıktısından doğrulayın.
 - Tetik efekt parametreleri topluluk belgelerine dayanır; farklı donanım sürümlerinde his değişebilir.
