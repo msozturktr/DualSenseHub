@@ -1,7 +1,7 @@
-# DualSense Hub ETS2 UDP protocol (version 3)
+# DualSense Hub ETS2 UDP protocol (version 4)
 
 The plugin sends one datagram per update (about 30 Hz, plus immediately when a flag changes) to `127.0.0.1:47555`.
-Fixed 148-byte packet (version 3). Version-1 packets (36 bytes, or 32 in early builds without throttle) are still accepted; missing fields read as 0. Little-endian, packed. The magic stays `DSH1`; the version byte decides the layout.
+Fixed 148-byte packet (version 4). Version-1 packets (36 bytes, or 32 in early builds without throttle) are still accepted; missing fields read as 0. Little-endian, packed. The magic stays `DSH1`; the version byte decides the layout.
 
 | Offset | Type    | Field         | Notes |
 |-------:|---------|---------------|-------|
@@ -41,12 +41,25 @@ Version 3 field:
 |-------:|------|-------|-------|
 | 148    | f32  | input_throttle | 0..1, `truck.input.throttle` (raw pedal, unlike the effective throttle at 32); the app colors by this |
 
+Version 4 fields:
+
+| Offset | Type | Field | Notes |
+|-------:|------|-------|-------|
+| 152    | f32  | wear_total | sum of `truck.wear.engine`, `.transmission`, `.cabin`, `.chassis`, `.wheels` (each 0..1); a sudden increase means damage |
+| 156    | f32[3] | accel | `truck.local.acceleration.linear` x,y,z in m/s^2; the strongest sample since the previous packet, so single-frame impact spikes survive the 30 Hz send rate |
+| 168    | f32  | cruise_speed | m/s, `truck.cruise_control` (0 when cruise control is off) |
+| 172    | u8   | retarder | `truck.brake.retarder` current level |
+| 173    | u8   | retarder_steps | config `retarder.steps` (0 = no retarder) |
+| 174    | u16  | reserved | 0 |
+
+Parsers read the prefix they know: a packet with a higher version is accepted and the unknown tail is ignored; older packets leave newer fields at 0.
+
 Surface speed of a wheel = `abs(vel) * 2 * pi * radius` (m/s). Assumptions: vehicle space has +x to the right, so x < 0 means a left wheel;
 the SDK has no ABS channel, so the app infers lockup from wheel speed versus truck speed. Indexed channels are registered for indices 0..7;
 indices beyond the truck's real wheel count fail to register and stay 0.
 
 Channels used: `truck.light.lblinker`, `truck.light.rblinker`, `truck.hazard.warning`, `truck.light.brake`, `truck.engine.enabled`,
-`truck.electric.enabled`, `truck.speed`, `truck.engine.rpm`, `truck.fuel.amount`, `truck.effective.throttle`, (v3) `truck.input.throttle`, and (v2) `truck.effective.brake`,
+`truck.electric.enabled`, `truck.speed`, `truck.engine.rpm`, `truck.fuel.amount`, `truck.effective.throttle`, (v3) `truck.input.throttle`, (v4) `truck.wear.*`, `truck.local.acceleration.linear`, `truck.cruise_control`, `truck.brake.retarder`, and (v2) `truck.effective.brake`,
 `truck.brake.air.pressure`, `truck.brake.parking`, `truck.engine.gear`, indexed `truck.wheel.suspension.deflection`, `truck.wheel.angular_velocity`, `truck.wheel.on_ground`. The switch-state channels are not used because
 the light channels already follow the blink cycle.
 

@@ -10,7 +10,7 @@ A Linux control center for the Sony DualSense (PS5) controller, with an Euro Tru
 - **Player and mic LEDs**
 - **Device info:** battery, connection type (USB/Bluetooth), MAC, firmware/hardware versions
 - **Live input test:** buttons, sticks, triggers, gyro/accelerometer, touchpad; rumble and adaptive trigger tests
-- **ETS2 mode:** turn signals blink the lightbar amber and light the matching side's player LEDs, brake turns it red, color follows how hard you press the throttle, plus haptics: road feel, gear-shift kick, brake trigger resistance, kickdown detent on the throttle trigger, ABS/wheel-lock trigger vibration and optional engine rumble
+- **ETS2 mode:** turn signals blink the lightbar amber and light the matching side's player LEDs, brake turns it red, color follows how hard you press the throttle, plus haptics: road feel, gear-shift kick, brake trigger resistance, kickdown detent on the throttle trigger, ABS/wheel-lock trigger vibration, a crash jolt (damage jump or impact spike) and optional engine rumble; the player LEDs can also act as a fuel, cruise-control or retarder gauge
 - **System tray** app with autostart; ETS2 mode starts automatically when the game is detected
 
 Built with C# + Avalonia UI (.NET 10). Talks to the controller through the kernel `hid_playstation` driver (sysfs) and raw hidraw output reports (USB and Bluetooth, with CRC32).

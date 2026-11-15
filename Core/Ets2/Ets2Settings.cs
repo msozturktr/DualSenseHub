@@ -2,10 +2,13 @@ namespace DualSenseHub.Core.Ets2;
 
 public enum GradientSource { Throttle, Speed, Rpm }
 
+/// <summary>What the five player LEDs show as a left-to-right bar while no blinker is active.</summary>
+public enum LedGauge { Off, Fuel, Cruise, Retarder }
+
 /// <summary>User-configurable ETS2 rules; persisted in ets2.json.</summary>
 public sealed class Ets2Settings
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
     /// <summary>Settings schema version; 0 when the file predates versioning (see <see cref="Migrate"/>).</summary>
     public int Version { get; set; } = CurrentVersion;
     public bool Blinkers { get; set; } = true;
@@ -39,6 +42,11 @@ public sealed class Ets2Settings
     public int? TriggersLevel { get; set; }
     public bool EngineRumble { get; set; }
     public int EngineRumbleLevel { get; set; } = 50;
+    /// <summary>Strong two-motor jolt on impacts (damage jump or acceleration spike).</summary>
+    public bool CrashRumble { get; set; } = true;
+    public int CrashRumbleLevel { get; set; } = 80;
+    /// <summary>Player LED gauge shown when no blinker is active.</summary>
+    public LedGauge Gauge { get; set; } = LedGauge.Off;
     public bool Abs { get; set; } = true;
     public int AbsLevel { get; set; } = 70;
     public string BlinkerColor { get; set; } = "FF8C00";
@@ -48,10 +56,13 @@ public sealed class Ets2Settings
     /// <summary>Upgrades settings loaded from an older file in place.</summary>
     public void Migrate()
     {
-        if (Version >= CurrentVersion) { Triggers = null; TriggersLevel = null; return; }
-        Source = GradientSource.Throttle; // files saved before throttle existed carry a stale "Speed"
-        if (Triggers is { } t) { GasTrigger = BrakeTrigger = t; }
-        if (TriggersLevel is { } l) { GasTriggerLevel = BrakeTriggerLevel = l; }
+        if (Version < 2)
+        {
+            Source = GradientSource.Throttle; // files saved before throttle existed carry a stale "Speed"
+            if (Triggers is { } t) { GasTrigger = BrakeTrigger = t; }
+            if (TriggersLevel is { } l) { GasTriggerLevel = BrakeTriggerLevel = l; }
+        }
+        // Version 3 added CrashRumble/CrashRumbleLevel/Gauge; missing keys already deserialize to their defaults.
         Triggers = null; TriggersLevel = null;
         Version = CurrentVersion;
     }

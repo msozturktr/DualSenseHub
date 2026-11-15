@@ -21,6 +21,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<IGameMode> Modes { get; } = [];
     public string[] SourceOptions { get; } = ["Gaz pedalı", "Hız", "Devir (RPM)"];
+    public string[] GaugeOptions { get; } = ["Kapalı", "Yakıt", "Hız sabitleyici", "Retarder kademesi"];
 
     [ObservableProperty] private IGameMode? _selected;
     [ObservableProperty] private bool _isRunning;
@@ -51,6 +52,9 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _brakeTriggerLevel;
     [ObservableProperty] private bool _engineRumble;
     [ObservableProperty] private double _engineRumbleLevel;
+    [ObservableProperty] private bool _crashRumble;
+    [ObservableProperty] private double _crashRumbleLevel;
+    [ObservableProperty] private int _gaugeIndex;
     [ObservableProperty] private bool _abs;
     [ObservableProperty] private double _absLevel;
 
@@ -73,6 +77,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
         GasTrigger = s.GasTrigger; GasTriggerLevel = s.GasTriggerLevel; KickdownPoint = s.KickdownPoint;
         BrakeTrigger = s.BrakeTrigger; BrakeTriggerLevel = s.BrakeTriggerLevel;
         EngineRumble = s.EngineRumble; EngineRumbleLevel = s.EngineRumbleLevel;
+        CrashRumble = s.CrashRumble; CrashRumbleLevel = s.CrashRumbleLevel; GaugeIndex = (int)s.Gauge;
         Abs = s.Abs; AbsLevel = s.AbsLevel;
         _loading = false;
         _saveTimer = new Timer(_ => ConfigStore.SaveEts2(_ets2.Settings), null, Timeout.Infinite, Timeout.Infinite);
@@ -108,6 +113,9 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     partial void OnBrakeTriggerLevelChanged(double value) => Edit(s => s.BrakeTriggerLevel = (int)Math.Round(value));
     partial void OnEngineRumbleChanged(bool value) => Edit(s => s.EngineRumble = value);
     partial void OnEngineRumbleLevelChanged(double value) => Edit(s => s.EngineRumbleLevel = (int)Math.Round(value));
+    partial void OnCrashRumbleChanged(bool value) => Edit(s => s.CrashRumble = value);
+    partial void OnCrashRumbleLevelChanged(double value) => Edit(s => s.CrashRumbleLevel = (int)Math.Round(value));
+    partial void OnGaugeIndexChanged(int value) => Edit(s => s.Gauge = (LedGauge)Math.Clamp(value, 0, 3));
     partial void OnAbsChanged(bool value) => Edit(s => s.Abs = value);
     partial void OnAbsLevelChanged(double value) => Edit(s => s.AbsLevel = (int)Math.Round(value));
 

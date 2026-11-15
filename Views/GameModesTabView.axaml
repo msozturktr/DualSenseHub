@@ -22,7 +22,7 @@
             <StackPanel Spacing="8" IsVisible="{Binding IsEts2Selected}">
                 <TextBlock Text="Kurallar" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,0" />
                 <TextBlock Text="Öncelik: sinyal &gt; fren &gt; motor kapalı &gt; düşük yakıt &gt; hız/devir geçişi." Opacity="0.7" TextWrapping="Wrap" />
-                <Grid ColumnDefinitions="260,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="6">
+                <Grid ColumnDefinitions="260,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="6">
                     <CheckBox Grid.Row="0" Content="Sinyal / dörtlü (turuncu, yanıp sönme + sol/sağ LED)" IsChecked="{Binding Blinkers}" />
                     <TextBox Grid.Row="0" Grid.Column="2" Text="{Binding BlinkerColor}" Width="90" Watermark="RRGGBB" />
                     <CheckBox Grid.Row="1" Content="Fren (kırmızı)" IsChecked="{Binding Brake}" />
@@ -33,11 +33,13 @@
                     <CheckBox Grid.Row="4" Content="Yeşil → kırmızı geçişi" IsChecked="{Binding Gradient}" />
                     <ComboBox Grid.Row="4" Grid.Column="2" ItemsSource="{Binding SourceOptions}" SelectedIndex="{Binding SourceIndex}" Width="130" />
                     <CheckBox Grid.Row="5" Content="Oyun duraklatılınca karart" IsChecked="{Binding DimWhenPaused}" />
+                    <TextBlock Grid.Row="6" Text="Oyuncu LED göstergesi (sinyal yokken)" VerticalAlignment="Center" />
+                    <ComboBox Grid.Row="6" Grid.Column="2" ItemsSource="{Binding GaugeOptions}" SelectedIndex="{Binding GaugeIndex}" Width="160" />
                 </Grid>
 
                 <TextBlock Text="Titreşim ve tetikler" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,0" />
                 <TextBlock Text="Her özellik ayrı açılıp kapatılır; kaydırıcı şiddeti (%0-100) belirler. Duraklatma, bağlantı kopması veya mod durunca titreşim kesilir, tetikler serbest kalır." Opacity="0.7" TextWrapping="Wrap" />
-                <Grid ColumnDefinitions="380,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="6">
+                <Grid ColumnDefinitions="380,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="6">
                     <CheckBox Grid.Row="0" Content="Yol hissi (süspansiyon darbeleri, iniş)" IsChecked="{Binding RoadFeel}" />
                     <Slider Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding RoadFeelLevel}" Width="220" HorizontalAlignment="Left" />
                     <CheckBox Grid.Row="1" Content="Vites geçişi (kısa vuruş)" IsChecked="{Binding GearShift}" />
@@ -50,8 +52,10 @@
                     <Slider Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding BrakeTriggerLevel}" Width="220" HorizontalAlignment="Left" />
                     <CheckBox Grid.Row="5" Content="ABS / tekerlek kilitlenmesi (L2 titreşimi)" IsChecked="{Binding Abs}" />
                     <Slider Grid.Row="5" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding AbsLevel}" Width="220" HorizontalAlignment="Left" />
-                    <CheckBox Grid.Row="6" Content="Motor uğultusu (devire bağlı, varsayılan kapalı)" IsChecked="{Binding EngineRumble}" />
-                    <Slider Grid.Row="6" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding EngineRumbleLevel}" Width="220" HorizontalAlignment="Left" />
+                    <CheckBox Grid.Row="6" Content="Kaza titreşimi (çarpma / hasar anında güçlü darbe)" IsChecked="{Binding CrashRumble}" />
+                    <Slider Grid.Row="6" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding CrashRumbleLevel}" Width="220" HorizontalAlignment="Left" />
+                    <CheckBox Grid.Row="7" Content="Motor uğultusu (devire bağlı, varsayılan kapalı)" IsChecked="{Binding EngineRumble}" />
+                    <Slider Grid.Row="7" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding EngineRumbleLevel}" Width="220" HorizontalAlignment="Left" />
                 </Grid>
 
                 <Border Background="#14808080" CornerRadius="6" Padding="12" Margin="0,8,0,0">

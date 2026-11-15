@@ -6,17 +6,21 @@ namespace DualSenseHub.Core.Ets2;
 public readonly record struct Ets2Packet(
     ushort Flags, float Speed, float Rpm, float RpmLimit, float Fuel, float FuelCapacity, uint Seq, float Throttle = 0,
     float EffBrake = 0, float AirPressure = 0, int Gear = 0, int WheelCount = 0, byte GroundMask = 0, byte LeftMask = 0,
-    float[]? Susp = null, float[]? WheelVel = null, float[]? Radius = null, float InputThrottle = -1)
+    float[]? Susp = null, float[]? WheelVel = null, float[]? Radius = null, float InputThrottle = -1,
+    float WearTotal = 0, float AccelX = 0, float AccelY = 0, float AccelZ = 0, float CruiseSpeed = 0, int Retarder = 0, int RetarderSteps = 0)
 {
     public const int MaxWheels = 8;
     public const int SizeV1 = 36;
     public const int SizeV2 = 148;
-    public const int Size = 152; // version 3 (adds raw input throttle)
+    public const int SizeV3 = 152; // version 3 (adds raw input throttle)
+    public const int Size = 176;   // version 4 (adds wear, acceleration, cruise control, retarder)
     private const int MinSize = 32; // version-1 packets from older plugin builds lack throttle
     public const int Port = 47555;
 
     /// <summary>Raw pedal position when the plugin sends it (v3), else the effective throttle.</summary>
     public float ColorThrottle => InputThrottle >= 0 ? InputThrottle : Throttle;
+    public double AccelMagnitude => Math.Sqrt(AccelX * (double)AccelX + AccelY * (double)AccelY + AccelZ * (double)AccelZ);
+    public double CruiseKmh => CruiseSpeed * 3.6;
     public bool LeftBlinker => (Flags & 1) != 0;
     public bool RightBlinker => (Flags & 2) != 0;
     public bool Hazard => (Flags & 4) != 0;
@@ -60,7 +64,18 @@ public readonly record struct Ets2Packet(
             WheelVel = ReadFloats(d[84..]),
             Radius = ReadFloats(d[116..]),
         };
-        if (d[4] >= 3 && d.Length >= Size) p = p with { InputThrottle = BinaryPrimitives.ReadSingleLittleEndian(d[148..]) };
+        if (d[4] >= 3 && d.Length >= SizeV3) p = p with { InputThrottle = BinaryPrimitives.ReadSingleLittleEndian(d[148..]) };
+        if (d[4] >= 4 && d.Length >= Size)
+            p = p with
+            {
+                WearTotal = BinaryPrimitives.ReadSingleLittleEndian(d[152..]),
+                AccelX = BinaryPrimitives.ReadSingleLittleEndian(d[156..]),
+                AccelY = BinaryPrimitives.ReadSingleLittleEndian(d[160..]),
+                AccelZ = BinaryPrimitives.ReadSingleLittleEndian(d[164..]),
+                CruiseSpeed = BinaryPrimitives.ReadSingleLittleEndian(d[168..]),
+                Retarder = d[172],
+                RetarderSteps = d[173],
+            };
         return true;
     }
 
@@ -75,7 +90,7 @@ public readonly record struct Ets2Packet(
     {
         var b = new byte[Size];
         "DSH1"u8.CopyTo(b);
-        b[4] = 3;
+        b[4] = 4;
         BinaryPrimitives.WriteUInt16LittleEndian(b.AsSpan(6), Flags);
         BinaryPrimitives.WriteSingleLittleEndian(b.AsSpan(8), Speed);
         BinaryPrimitives.WriteSingleLittleEndian(b.AsSpan(12), Rpm);
@@ -88,6 +103,12 @@ public readonly record struct Ets2Packet(
         BinaryPrimitives.WriteSingleLittleEndian(b.AsSpan(40), AirPressure);
         BinaryPrimitives.WriteInt32LittleEndian(b.AsSpan(44), Gear);
         BinaryPrimitives.WriteSingleLittleEndian(b.AsSpan(148), InputThrottle >= 0 ? InputThrottle : Throttle);
+        BinaryPrimitives.WriteSingleLittleEndian(b.AsSpan(152), WearTotal);
+        BinaryPrimitives.WriteSingleLittleEndian(b.AsSpan(156), AccelX);
+        BinaryPrimitives.WriteSingleLittleEndian(b.AsSpan(160), AccelY);
+        BinaryPrimitives.WriteSingleLittleEndian(b.AsSpan(164), AccelZ);
+        BinaryPrimitives.WriteSingleLittleEndian(b.AsSpan(168), CruiseSpeed);
+        b[172] = (byte)Math.Clamp(Retarder, 0, 255); b[173] = (byte)Math.Clamp(RetarderSteps, 0, 255);
         b[48] = (byte)Math.Min(WheelCount, MaxWheels); b[49] = GroundMask; b[50] = LeftMask;
         for (int i = 0; i < MaxWheels; i++)
         {

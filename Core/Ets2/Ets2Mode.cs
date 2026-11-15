@@ -130,8 +130,32 @@ public sealed class Ets2Mode : IGameMode, IDisposable
             (r, g, b) = Hsv(120 * (1 - Math.Clamp(t, 0, 1)));
         }
 
+        if (!blinkerActive) mask = GaugeMask(p, s, nowMs);
+
         if (s.DimWhenPaused && p.Paused) { r = (byte)(r * 0.12); g = (byte)(g * 0.12); b = (byte)(b * 0.12); }
         return (r, g, b, mask);
+    }
+
+    /// <summary>Left-to-right bar of <paramref name="n"/> lit player LEDs (bit 0 is the leftmost).</summary>
+    private static byte Bar(int n) => (byte)((1 << Math.Clamp(n, 0, 5)) - 1);
+
+    /// <summary>Player LED mask for the selected gauge source; 0 when the gauge is off or the source is inactive.</summary>
+    public static byte GaugeMask(Ets2Packet p, Ets2Settings s, long nowMs)
+    {
+        switch (s.Gauge)
+        {
+            case LedGauge.Fuel:
+                if (p.FuelCapacity <= 0) return 0;
+                if (p.FuelFraction < 0.15) return (byte)(nowMs / 400 % 2 == 0 ? 1 : 0); // single blinking LED
+                return Bar((int)Math.Ceiling(p.FuelFraction * 5));
+            case LedGauge.Cruise:
+                if (p.CruiseSpeed <= 0) return 0;
+                return Bar(Math.Max(1, (int)Math.Ceiling(p.CruiseKmh / Math.Max(1, s.MaxSpeedKmh) * 5)));
+            case LedGauge.Retarder:
+                if (p.RetarderSteps <= 0 || p.Retarder <= 0) return 0;
+                return Bar((int)Math.Ceiling(Math.Min(p.Retarder, p.RetarderSteps) * 5.0 / p.RetarderSteps));
+            default: return 0;
+        }
     }
 
     /// <summary>Hue 0 (red) to 120 (green) at full saturation/value.</summary>

@@ -5,7 +5,7 @@ namespace DualSenseHub.Core.Ets2;
 
 /// <summary>
 /// Fake plugin: sends packets so the app can be tested without the game. 3 s phases cycle idle, left, right, hazard, brake
-/// (the brake phase includes a wheel lockup); gears change every 4 s (through neutral), rpm sweeps up each gear,
+/// (the brake phase includes a wheel lockup); a crash (damage jump + acceleration spike) every 12 s at t%12=9, cruise control on at t%20 in [2,12), retarder cycling 0-4, gears change every 4 s (through neutral), rpm sweeps up each gear,
 /// suspension bumps and a landing happen periodically, the parking brake is set in the idle phase.
 /// </summary>
 public static class Ets2Sim
@@ -52,8 +52,21 @@ public static class Ets2Sim
         if (b3 is > 0 and < 0.4) ground &= LeftMask;
         if (phase == 4 && t % 3 > 1.5) vel[2] *= 0.1f; // lockup on wheel 2 (left) during the second half of the brake phase
 
+        // Normal driving accelerations that must not count as a crash: braking, bumps.
+        float az = phase == 4 ? -6f : 0.5f * MathF.Sin((float)t);
+        float ay = 0;
+        if (b1 is > 0 and < 0.2) ay = 14 * MathF.Sin((float)(b1 / 0.2 * Math.PI));
+        // Crash every 12 s at t%12 = 9: one frame of a hard impact spike plus a damage jump.
+        double cr = t % 12 - 9;
+        float ax = 0;
+        if (cr is >= 0 and < 0.05) { ax = -55; ay = 12; az = 30; }
+        float wear = 0.1f + 0.03f * (int)((t + 3) / 12);
+        // Cruise control on for t%20 in [2,12) at 80 km/h; retarder steps through 0..4 of 4.
+        float cruise = t % 20 is >= 2 and < 12 ? 80 / 3.6f : 0;
+        int retarder = (int)(t / 3) % 5;
         return new Ets2Packet(flags, speed, rpm, RpmLimit, 300, 600, seq, (float)(0.5 + 0.5 * Math.Sin(t)),
-            brake, 8, gear, Wheels, ground, LeftMask, susp, vel, radius);
+            brake, 8, gear, Wheels, ground, LeftMask, susp, vel, radius,
+            WearTotal: wear, AccelX: ax, AccelY: ay, AccelZ: az, CruiseSpeed: cruise, Retarder: retarder, RetarderSteps: 4);
     }
 
     public static async Task RunAsync(int seconds, CancellationToken ct = default, int port = Ets2Packet.Port)

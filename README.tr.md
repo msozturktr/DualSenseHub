@@ -10,7 +10,7 @@ Sony DualSense (PS5) kontrolcüsü için bir Linux kontrol merkezi, Euro Truck S
 - **Oyuncu ve mikrofon LED'leri**
 - **Cihaz bilgisi:** pil, bağlantı türü (USB/Bluetooth), MAC, firmware/donanım sürümleri
 - **Canlı giriş testi:** düğmeler, çubuklar, tetikler, gyro/akseleratör, dokunmatik yüzey; titreşim ve adaptif tetik testleri
-- **ETS2 modu:** dönüş sinyalleri ışık çubuğunu sarı yakıp söndürür ve ilgili tarafın oyuncu LED'lerini yakar, fren kırmızı olur, renk gaz pedalına ne kadar bastığınıza göre değişir, ayrıca dokunsal geri bildirim: yol hissi, vites geçiş darbesi, fren tetik direnci, gaz tetikinde kickdown tıkı, ABS/tekerlek kilidi titreşimi ve isteğe bağlı motor titreşimi
+- **ETS2 modu:** dönüş sinyalleri ışık çubuğunu sarı yakıp söndürür ve ilgili tarafın oyuncu LED'lerini yakar, fren kırmızı olur, renk gaz pedalına ne kadar bastığınıza göre değişir, ayrıca dokunsal geri bildirim: yol hissi, vites geçiş darbesi, fren tetik direnci, gaz tetikinde kickdown tıkı, ABS/tekerlek kilidi titreşimi, kaza darbesi (hasar artışı veya çarpma ivmesi) ve isteğe bağlı motor titreşimi; oyuncu LED'leri ayrıca yakıt, hız sabitleyici veya retarder göstergesi olabilir
 - **Sistem tepsisi** uygulaması otomatik başlatma ile; ETS2 modu oyun algılandığında otomatik olarak başlar
 
 C# + Avalonia UI (.NET 10) ile inşa edilmiştir. Kontrolcüye kernel `hid_playstation` sürücüsü (sysfs) ve ham hidraw çıkış raporları (USB ve Bluetooth, CRC32 ile) üzerinden bağlanır.

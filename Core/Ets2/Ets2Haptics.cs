@@ -26,10 +26,21 @@ public sealed class Ets2Haptics
     private double _envL, _envR;
     private int _lastGear = int.MinValue;
     private long _kickUntil = -1, _absUntil = -1;
+    // Crash detection state
+    private const double WearJump = 0.002;      // minimum rise of the summed wear that counts as damage
+    private const double WearFull = 0.04;       // wear rise that maps to a full impact
+    private const double AccelThreshold = 25;   // m/s^2; braking (~8) and potholes (~15) stay below
+    private const double AccelFull = 60;
+    private bool _hasPrevCrash;
+    private double _prevWear;
+    private int _prevWheels;
+    private float _prevRpmLimit, _prevFuelCap;
+    private long _crashStart = -1, _crashDur;
+    private double _crashPeak;
 
     private void Reset()
     {
-        _hasPrev = false; _envL = _envR = 0; _kickUntil = _absUntil = -1; _lastSeq = -1;
+        _hasPrev = false; _hasPrevCrash = false; _crashStart = -1; _envL = _envR = 0; _kickUntil = _absUntil = -1; _lastSeq = -1;
     }
 
     public HapticFrame Update(Ets2Packet p, bool connected, Ets2Settings s, long nowMs)
@@ -45,6 +56,7 @@ public sealed class Ets2Haptics
         {
             double pktDt = (nowMs - _lastPktMs) / 1000.0;
             if (_hasPrev && pktDt > 0.005 && pktDt < 0.25) Road(p, pktDt);
+            Crash(p, pktDt, nowMs);
             Gear(p, nowMs);
             for (int i = 0; i < Ets2Packet.MaxWheels; i++) _prevSusp[i] = p.Susp != null && i < p.Susp.Length ? p.Susp[i] : 0;
             _prevGround = p.GroundMask; _hasPrev = true; _lastSeq = p.Seq; _lastPktMs = nowMs;
@@ -58,6 +70,13 @@ public sealed class Ets2Haptics
             strong = Math.Max(strong, _envL * lvRoad);
             weak = Math.Max(weak, _envR * lvRoad * 0.8);
             active.Add("road");
+        }
+        if (s.CrashRumble && _crashStart >= 0 && nowMs < _crashStart + _crashDur)
+        {
+            double frac = (nowMs - _crashStart) / (double)_crashDur;
+            double k = Math.Clamp(_crashPeak * (1 - frac) * s.CrashRumbleLevel * PercentToUnit, 0, 1);
+            strong = Math.Max(strong, k); weak = Math.Max(weak, k); // above road feel and gear kick
+            active.Add("crash");
         }
         if (s.GearShift && nowMs < _kickUntil)
         {
@@ -120,6 +139,33 @@ public sealed class Ets2Haptics
             if (!sidesKnown || isLeft) _envL = Math.Max(_envL, x);
             if (!sidesKnown || !isLeft) _envR = Math.Max(_envR, x);
         }
+    }
+
+    /// <summary>
+    /// Detects an impact from a jump in summed wear (repairs, i.e. decreases, are ignored) or an acceleration spike.
+    /// The first frame, a long packet gap and a truck/config change only update the baseline.
+    /// </summary>
+    private void Crash(Ets2Packet p, double pktDt, long nowMs)
+    {
+        bool cfgSame = p.WheelCount == _prevWheels && p.RpmLimit == _prevRpmLimit && p.FuelCapacity == _prevFuelCap;
+        if (_hasPrevCrash && cfgSame && pktDt < 0.25)
+        {
+            double impact = 0;
+            double dw = p.WearTotal - _prevWear;
+            if (dw > WearJump) impact = Math.Max(impact, Math.Clamp(0.25 + dw / WearFull, 0, 1));
+            double mag = p.AccelMagnitude;
+            if (mag > AccelThreshold) impact = Math.Max(impact, Math.Clamp(0.2 + (mag - AccelThreshold) / (AccelFull - AccelThreshold), 0, 1));
+            if (impact > 0)
+            {
+                double remaining = _crashStart >= 0 && nowMs < _crashStart + _crashDur
+                    ? _crashPeak * (1 - (nowMs - _crashStart) / (double)_crashDur) : 0;
+                _crashPeak = Math.Max(remaining, 0.5 + 0.5 * impact);
+                _crashStart = nowMs;
+                _crashDur = (long)(150 + 250 * impact);
+            }
+        }
+        _prevWear = p.WearTotal; _prevWheels = p.WheelCount; _prevRpmLimit = p.RpmLimit; _prevFuelCap = p.FuelCapacity;
+        _hasPrevCrash = true;
     }
 
     private void Gear(Ets2Packet p, long nowMs)
