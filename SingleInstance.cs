@@ -29,6 +29,8 @@ public sealed class SingleInstance : IDisposable
 
     public event Action? QuitRequested;
     public Func<string>? StatusProvider { get; set; }
+    /// <summary>Handles "record &lt;seconds|stop&gt;"; gets the argument and returns the reply line.</summary>
+    public Func<string, string>? RecordHandler { get; set; }
 
     /// <summary>
     /// Returns true when this process is the primary instance; otherwise signals the running one and returns false.
@@ -106,6 +108,7 @@ public sealed class SingleInstance : IDisposable
                     else if (cmd == "quit") { reply = "bye"; Reply(c, reply); QuitRequested?.Invoke(); continue; }
                     else if (cmd == "status") reply = StatusProvider?.Invoke() ?? "starting";
                     else if (cmd == "ping") reply = "pong";
+                    else if (cmd == "record" || cmd.StartsWith("record ")) reply = RecordHandler?.Invoke(cmd[6..].Trim()) ?? "error: not ready";
                     else ShowRequested?.Invoke();
                 }
                 catch (Exception e) { Console.Error.WriteLine(e); }

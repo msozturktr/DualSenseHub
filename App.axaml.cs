@@ -51,6 +51,7 @@ public partial class App : Application
                 Program.Instance.ShowRequested += () => Dispatcher.UIThread.Post(ShowWindow);
                 Program.Instance.QuitRequested += () => Dispatcher.UIThread.Post(Quit);
                 Program.Instance.StatusProvider = () => _vm.Games.StatusReport();
+                Program.Instance.RecordHandler = a => _vm.Games.Record(a);
             }
             bool hidden = desktop.Args?.Any(a => a == "--tray" || a == "--minimized") == true;
             if (!hidden) ShowWindow();

@@ -8,12 +8,24 @@ public static class Cli
 {
     public static bool IsCliRun(string[] args) =>
         args.Contains("--status") || args.Contains("--quit") || args.Contains("--info") || args.Contains("--apply-last") || args.Contains("--set-color")
-        || args.Contains("--ets2-sim") || args.Contains("--ets2-haptics-test") || args.Contains("--ets2-settings-test") || args.Contains("--rumble-test") || args.Contains("--ets2-listen-test") || args.Contains("--ets2-auto-test");
+        || args.Contains("--ets2-sim") || args.Contains("--ets2-haptics-test") || args.Contains("--ets2-settings-test") || args.Contains("--rumble-test") || args.Contains("--ets2-listen-test") || args.Contains("--ets2-auto-test")
+        || args.Contains("--record") || args.Contains("--analyze-rec");
 
     public static int Run(string[] args)
     {
         if (args.Contains("--status")) return SingleInstance.Query("status", out var st) ? Print(st) : NoInstance();
         if (args.Contains("--quit")) return SingleInstance.Query("quit", out var q) ? Print(q) : NoInstance();
+        if (args.Contains("--record"))
+        {
+            int ri = Array.IndexOf(args, "--record");
+            string arg = ri + 1 < args.Length && !args[ri + 1].StartsWith("--") ? args[ri + 1] : "";
+            return SingleInstance.Query("record " + arg, out var rr) ? Print(rr) : NoInstance();
+        }
+        if (args.Contains("--analyze-rec"))
+        {
+            int ai = Array.IndexOf(args, "--analyze-rec");
+            return ai + 1 < args.Length ? Ets2RecAnalyzer.Run(args[ai + 1]) : Print("usage: --analyze-rec <file.csv>");
+        }
         if (args.Contains("--info")) return Info();
         if (args.Contains("--set-color")) return SetColor(args);
         if (args.Contains("--ets2-haptics-test")) return Ets2HapticsTest(args);

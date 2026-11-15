@@ -14,6 +14,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     private readonly EffectEngine _engine;
     private readonly Ets2TelemetryListener _listener = new();
     private readonly Ets2Mode _ets2;
+    private readonly Ets2Recorder _recorder;
     private readonly Ets2AutoStart _auto;
     private readonly DispatcherTimer _ui = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly Timer _saveTimer;
@@ -66,6 +67,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     {
         _output = output; _engine = engine;
         _ets2 = new Ets2Mode(_listener);
+        _recorder = new Ets2Recorder(_listener, () => _ets2.Settings);
         _auto = new Ets2AutoStart(_listener, () => IsRunning, StartMode, StopMode);
         Modes.Add(_ets2);
         Selected = _ets2;
@@ -192,6 +194,19 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Plain-text state for <c>dualsensehub --status</c>.</summary>
+    /// <summary>Socket command: "stop" or a duration in seconds (default 120). Returns the reply line.</summary>
+    public string Record(string arg)
+    {
+        try
+        {
+            if (arg == "stop") return _recorder.Recording ? $"stopped rows={_recorder.Stop()}" : "not recording";
+            int secs = 120;
+            if (arg.Length > 0 && !int.TryParse(arg, out secs)) return "error: bad seconds";
+            return _recorder.Start(Math.Clamp(secs, 1, 3600));
+        }
+        catch (Exception e) { return "error: " + e.Message; }
+    }
+
     public string StatusReport() =>
         $"listening={_listener.Listening} port={Ets2Packet.Port} packets={_listener.PacketCount} rejected={_listener.RejectedCount} " +
         $"lastVersion={_listener.ProtocolVersion} lastRejectVersion={_listener.LastRejectVersion} lastRejectReason={_listener.LastRejectReason ?? "-"} " +
@@ -204,6 +219,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
         ConfigStore.SaveEts2(_ets2.Settings);
         if (IsRunning) _ets2.Stop();
         _ets2.Dispose();
+        _recorder.Dispose();
         _listener.Dispose();
     }
 }

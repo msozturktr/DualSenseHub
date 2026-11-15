@@ -6,6 +6,13 @@ public sealed record HapticFrame(byte Strong, byte Weak, TriggerEffect Left, Tri
     public static HapticFrame Idle() => new(0, 0, TriggerEffect.Off(), TriggerEffect.Off(), "");
 }
 
+/// <summary>Per-wheel road-feel internals of the last packet (suspension speed, running baseline, excess); for recording/tuning only.</summary>
+public sealed class WheelDiagnostics
+{
+    public readonly double[] Vel = new double[Ets2Packet.MaxWheels], Base = new double[Ets2Packet.MaxWheels], Excess = new double[Ets2Packet.MaxWheels];
+    public void Clear() { Array.Clear(Vel); Array.Clear(Base); Array.Clear(Excess); }
+}
+
 /// <summary>
 /// Pure haptics computation from the telemetry packet stream and <see cref="Ets2Settings"/>: no I/O, time is passed in.
 /// Call <see cref="Update"/> at about 30 Hz. Features: road feel, gear shift kick, brake trigger, throttle kickdown, engine rumble, ABS.
@@ -13,11 +20,15 @@ public sealed record HapticFrame(byte Strong, byte Weak, TriggerEffect Left, Tri
 public sealed class Ets2Haptics
 {
     private const double DecayMs = 150;       // road pulse envelope time constant
-    private const double DeflectionDeadzone = 0.12; // m/s above the wheel's own running baseline that is ignored (flat road)
+    private const double DeflectionDeadzone = 0.2;  // m/s above the wheel's own running baseline that is ignored (flat road)
     private const double DeflectionFull = 0.8;      // m/s above baseline that maps to a full pulse
     private const double BaselineTau = 1.0;         // s, running average of suspension speed (normal body motion)
     private const double MinRoadSpeedKmh = 5, MinAirborneS = 0.3, MinDt = 0.033;
-    private const long KickMs = 80, AbsHoldMs = 120;
+    private const long KickMs = 60, AbsHoldMs = 120;
+    private const double GearKickPeak = 0.35;        // weak (high-frequency) motor only, a light tick rather than a thump
+    private const double RoadStrongScale = 0.7, RoadWeakScale = 0.8;
+    private const double RoadMinOutput = 0.12;       // pulses that would end up below this read as constant buzz
+    private const long RoadRefractoryMs = 120;       // minimum gap between new pulses per side so they read as discrete bumps
     private const double PercentToUnit = 0.01;
 
     private readonly float[] _prevSusp = new float[Ets2Packet.MaxWheels];
@@ -28,6 +39,7 @@ public sealed class Ets2Haptics
     private bool _hasPrev;
     private long _lastSeq = -1, _lastPktMs, _lastTickMs;
     private double _envL, _envR;
+    private long _lastPulseL = -100000, _lastPulseR = -100000;
     private int _lastGear = int.MinValue;
     private long _kickUntil = -1, _absUntil = -1;
     // Crash detection state
@@ -44,7 +56,7 @@ public sealed class Ets2Haptics
 
     private void Reset()
     {
-        _hasPrev = false; _hasPrevCrash = false; _crashStart = -1; _envL = _envR = 0; _kickUntil = _absUntil = -1; _lastSeq = -1;
+        _hasPrev = false; _hasPrevCrash = false; _crashStart = -1; _envL = _envR = 0; _lastPulseL = _lastPulseR = -100000; _kickUntil = _absUntil = -1; _lastSeq = -1;
     }
 
     public HapticFrame Update(Ets2Packet p, bool connected, Ets2Settings s, long nowMs)
@@ -59,7 +71,8 @@ public sealed class Ets2Haptics
         if (p.Seq != _lastSeq)
         {
             double pktDt = (nowMs - _lastPktMs) / 1000.0;
-            if (_hasPrev && pktDt > 0.005 && pktDt < 0.25) Road(p, pktDt);
+            Diag.Clear();
+            if (_hasPrev && pktDt > 0.005 && pktDt < 0.25) Road(p, pktDt, nowMs, s.RoadFeelLevel * PercentToUnit);
             Crash(p, pktDt, nowMs);
             Gear(p, nowMs);
             for (int i = 0; i < Ets2Packet.MaxWheels; i++) _prevSusp[i] = p.Susp != null && i < p.Susp.Length ? p.Susp[i] : 0;
@@ -71,7 +84,7 @@ public sealed class Ets2Haptics
         double lvRoad = s.RoadFeelLevel * PercentToUnit;
         if (s.RoadFeel && (_envL > 0.02 || _envR > 0.02))
         {
-            strong = Math.Max(strong, _envL * lvRoad);
+            strong = Math.Max(strong, _envL * lvRoad * RoadStrongScale);
             weak = Math.Max(weak, _envR * lvRoad * 0.8);
             active.Add("road");
         }
@@ -84,8 +97,7 @@ public sealed class Ets2Haptics
         }
         if (s.GearShift && nowMs < _kickUntil)
         {
-            double k = 0.8 * s.GearShiftLevel * PercentToUnit;
-            strong = Math.Max(strong, k); weak = Math.Max(weak, k);
+            weak = Math.Max(weak, GearKickPeak * s.GearShiftLevel * PercentToUnit);
             active.Add("gear");
         }
         if (s.EngineRumble && p.EngineOn && p.Rpm > 50)
@@ -128,7 +140,9 @@ public sealed class Ets2Haptics
         return TriggerEffect.Weapon(start, start + 1, strength);
     }
 
-    private void Road(Ets2Packet p, double dt)
+    public WheelDiagnostics Diag { get; } = new();
+
+    private void Road(Ets2Packet p, double dt, long nowMs, double lvRoad)
     {
         if (p.Susp == null || p.WheelCount == 0) return;
         bool sidesKnown = p.LeftMask != 0 && p.LeftMask != (1 << p.WheelCount) - 1;
@@ -144,6 +158,7 @@ public sealed class Ets2Haptics
                 // Pulse only on suspension speed well above this wheel's normal motion, so steady body sway never buzzes.
                 double v = Math.Abs(p.Susp[i] - _prevSusp[i]) / dt;
                 double excess = v - _suspBase[i];
+                Diag.Vel[i] = v; Diag.Base[i] = _suspBase[i]; Diag.Excess[i] = excess;
                 _suspBase[i] += (v - _suspBase[i]) * a;
                 if (moving) x = Math.Clamp((excess - DeflectionDeadzone) / (DeflectionFull - DeflectionDeadzone), 0, 1);
             }
@@ -151,8 +166,10 @@ public sealed class Ets2Haptics
             _airS[i] = now ? 0 : _airS[i] + dt;
             if (x <= 0) continue;
             bool isLeft = (p.LeftMask >> i & 1) != 0;
-            if (!sidesKnown || isLeft) _envL = Math.Max(_envL, x);
-            if (!sidesKnown || !isLeft) _envR = Math.Max(_envR, x);
+            if ((!sidesKnown || isLeft) && x * lvRoad * RoadStrongScale >= RoadMinOutput && nowMs - _lastPulseL >= RoadRefractoryMs)
+            { _envL = Math.Max(_envL, x); _lastPulseL = nowMs; }
+            if ((!sidesKnown || !isLeft) && x * lvRoad * RoadWeakScale >= RoadMinOutput && nowMs - _lastPulseR >= RoadRefractoryMs)
+            { _envR = Math.Max(_envR, x); _lastPulseR = nowMs; }
         }
     }
 

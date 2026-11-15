@@ -26,7 +26,7 @@ public sealed class Ets2Settings
     public bool RoadFeel { get; set; } = true;
     public int RoadFeelLevel { get; set; } = 60;
     public bool GearShift { get; set; } = true;
-    public int GearShiftLevel { get; set; } = 60;
+    public int GearShiftLevel { get; set; } = 40;
     /// <summary>R2: light accelerator with a kickdown detent; <see cref="GasTriggerLevel"/> is the detent strength.</summary>
     public bool GasTrigger { get; set; } = true;
     public int GasTriggerLevel { get; set; } = 60;
