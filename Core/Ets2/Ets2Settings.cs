@@ -8,7 +8,7 @@ public enum LedGauge { Off, Fuel, Cruise, Retarder }
 /// <summary>User-configurable ETS2 rules; persisted in ets2.json.</summary>
 public sealed class Ets2Settings
 {
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 5;
     /// <summary>Settings schema version; 0 when the file predates versioning (see <see cref="Migrate"/>).</summary>
     public int Version { get; set; } = CurrentVersion;
     public bool Blinkers { get; set; } = true;
@@ -47,6 +47,16 @@ public sealed class Ets2Settings
     /// <summary>Strong two-motor jolt on impacts (damage jump or acceleration spike).</summary>
     public bool CrashRumble { get; set; } = true;
     public int CrashRumbleLevel { get; set; } = 80;
+    /// <summary>Bluetooth only: stream true voice-coil haptics (engine, road texture, bumps, ticks) instead of the two rumble motors.</summary>
+    public bool HdHaptics { get; set; } = true;
+    /// <summary>Overall HD haptics strength, 0-100 %.</summary>
+    public int HdMasterGain { get; set; } = 80;
+    /// <summary>HD engine hum strength, 0-100 % (0 = off).</summary>
+    public int HdEngineLevel { get; set; } = 25;
+    /// <summary>HD road texture and bump strength, 0-100 %.</summary>
+    public int HdRoadLevel { get; set; } = 70;
+    /// <summary>0-100: higher lets smaller suspension bumps trigger an HD burst.</summary>
+    public int BumpSensitivity { get; set; } = 50;
     /// <summary>Player LED gauge shown when no blinker is active.</summary>
     public LedGauge Gauge { get; set; } = LedGauge.Off;
     public bool Abs { get; set; } = true;
@@ -69,6 +79,7 @@ public sealed class Ets2Settings
         }
         // Version 3 added CrashRumble/CrashRumbleLevel/Gauge; missing keys already deserialize to their defaults.
         // Version 4 replaced the fixed green→red gradient with GradientLowColor/GradientHighColor (defaults apply).
+        // Version 5 added HdHaptics, HdMasterGain, HdEngineLevel, HdRoadLevel, BumpSensitivity (defaults apply).
         Triggers = null; TriggersLevel = null;
         Version = CurrentVersion;
     }

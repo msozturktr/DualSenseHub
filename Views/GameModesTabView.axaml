@@ -44,7 +44,7 @@
 
                 <TextBlock Text="Titreşim ve tetikler" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,0" />
                 <TextBlock Text="Her özellik ayrı açılıp kapatılır; kaydırıcı şiddeti (%0-100) belirler. Duraklatma, bağlantı kopması veya mod durunca titreşim kesilir, tetikler serbest kalır." Opacity="0.7" TextWrapping="Wrap" />
-                <Grid ColumnDefinitions="380,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="6">
+                <Grid ColumnDefinitions="380,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="6">
                     <CheckBox Grid.Row="0" Content="Yol hissi (zemin dokusu: çakıl/toprak/rampa şeridi; sert çukur ve iniş darbeleri)" IsChecked="{Binding RoadFeel}" />
                     <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8">
                         <Slider Minimum="0" Maximum="100" Value="{Binding RoadFeelLevel}" Width="220" />
@@ -65,6 +65,16 @@
                     <Slider Grid.Row="6" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding CrashRumbleLevel}" Width="220" HorizontalAlignment="Left" />
                     <CheckBox Grid.Row="7" Content="Motor uğultusu (devire bağlı, varsayılan kapalı)" IsChecked="{Binding EngineRumble}" />
                     <Slider Grid.Row="7" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding EngineRumbleLevel}" Width="220" HorizontalAlignment="Left" />
+                    <CheckBox Grid.Row="8" Content="HD titreşim (Bluetooth: gerçek ses bobini; yol, kasis, motor, vites; kaydırıcı: toplam şiddet)" IsChecked="{Binding HdHaptics}" />
+                    <Slider Grid.Row="8" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding HdMasterGain}" Width="220" HorizontalAlignment="Left" />
+                    <TextBlock Grid.Row="9" Text="HD motor uğultusu (0 = kapalı)" Margin="28,0,0,0" VerticalAlignment="Center" />
+                    <Slider Grid.Row="9" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding HdEngineLevel}" Width="220" HorizontalAlignment="Left" />
+                    <TextBlock Grid.Row="10" Text="HD yol dokusu ve kasis şiddeti" Margin="28,0,0,0" VerticalAlignment="Center" />
+                    <StackPanel Grid.Row="10" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                        <Slider Minimum="0" Maximum="100" Value="{Binding HdRoadLevel}" Width="220" />
+                        <TextBlock Text="Kasis hassasiyeti" VerticalAlignment="Center" Opacity="0.7" />
+                        <Slider Minimum="0" Maximum="100" Value="{Binding BumpSensitivity}" Width="140" ToolTip.Tip="Yüksek: küçük süspansiyon darbeleri de hissedilir. Düşük: yalnız belirgin kasisler." />
+                    </StackPanel>
                 </Grid>
 
                 <Border Background="#14808080" CornerRadius="6" Padding="12" Margin="0,8,0,0">

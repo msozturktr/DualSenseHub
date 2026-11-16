@@ -94,6 +94,7 @@ public sealed class ControllerService : ILightOutput, IHapticOutput, IDisposable
 
     private void Disconnect()
     {
+        _hd?.Dispose(); _hd = null; _hdFor = null;
         Hid?.Dispose();
         Hid = null; Current = null; HidError = null; _hidDenied = false; _ledDenied = false;
         BatteryPercent = null; BatteryStatus = null; Firmware = null; PairingMac = null;
@@ -194,6 +195,25 @@ public sealed class ControllerService : ILightOutput, IHapticOutput, IDisposable
             if (hid == null) return false;
             hid.Output.RumbleStrong = strong; hid.Output.RumbleWeak = weak;
             return hid.Send(OutputGroups.Rumble);
+        }
+    }
+
+    private HdHaptics? _hd;
+    private HidrawDevice? _hdFor;
+
+    public HdHaptics? GetHdHaptics()
+    {
+        if (Program.ScreenshotDir != null) return null;
+        lock (_lock)
+        {
+            var hid = Hid;
+            if (hid == null || !hid.IsBluetooth || !hid.CanWrite) return null;
+            if (_hd == null || _hdFor != hid)
+            {
+                _hd?.Dispose();
+                _hd = new HdHaptics(hid.WriteRaw); _hdFor = hid;
+            }
+            return _hd;
         }
     }
 

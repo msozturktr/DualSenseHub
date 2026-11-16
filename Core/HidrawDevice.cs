@@ -84,6 +84,13 @@ public sealed class HidrawDevice : IDisposable
         }
     }
 
+    /// <summary>Writes a prebuilt report (e.g. HD haptics 0x32) under the same lock as <see cref="Send"/>.</summary>
+    public bool WriteRaw(byte[] report)
+    {
+        if (!CanWrite || _stop) return false;
+        lock (_writeLock) return Native.write(_fd, report, (nuint)report.Length) == report.Length;
+    }
+
     public byte[]? GetFeatureReport(byte id, int length)
     {
         if (_stop) return null;

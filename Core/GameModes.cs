@@ -13,6 +13,8 @@ public interface IHapticOutput
 {
     bool SetRumble(byte strong, byte weak);
     bool SetTriggers(TriggerEffect left, TriggerEffect right);
+    /// <summary>HD voice-coil haptics (Bluetooth only); null when the connection cannot stream them.</summary>
+    HdHaptics? GetHdHaptics();
 }
 
 /// <summary>A pluggable game integration (e.g. ETS2 telemetry) that drives the controller lights.</summary>

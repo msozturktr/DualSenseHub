@@ -3,13 +3,13 @@ using DualSenseHub.Core.Ets2;
 
 namespace DualSenseHub;
 
-/// <summary>Headless commands: --info, --apply-last, --set-color RRGGBB, --ets2-sim, --ets2-listen-test, --ets2-haptics-test, --rumble-test.</summary>
+/// <summary>Headless commands: --info, --apply-last, --set-color RRGGBB, --ets2-sim, --ets2-listen-test, --ets2-haptics-test, --ets2-bump-test, --rumble-test, --haptic-test.</summary>
 public static class Cli
 {
     public static bool IsCliRun(string[] args) =>
         args.Contains("--status") || args.Contains("--quit") || args.Contains("--info") || args.Contains("--apply-last") || args.Contains("--set-color")
         || args.Contains("--ets2-sim") || args.Contains("--ets2-haptics-test") || args.Contains("--ets2-settings-test") || args.Contains("--rumble-test") || args.Contains("--ets2-listen-test") || args.Contains("--ets2-auto-test")
-        || args.Contains("--record") || args.Contains("--analyze-rec");
+        || args.Contains("--record") || args.Contains("--analyze-rec") || args.Contains("--haptic-test") || args.Contains("--ets2-bump-test");
 
     public static int Run(string[] args)
     {
@@ -26,6 +26,8 @@ public static class Cli
             int ai = Array.IndexOf(args, "--analyze-rec");
             return ai + 1 < args.Length ? Ets2RecAnalyzer.Run(args[ai + 1]) : Print("usage: --analyze-rec <file.csv>");
         }
+        if (args.Contains("--haptic-test")) return HapticTest(args);
+        if (args.Contains("--ets2-bump-test")) return Ets2BumpTest(args);
         if (args.Contains("--info")) return Info();
         if (args.Contains("--set-color")) return SetColor(args);
         if (args.Contains("--ets2-haptics-test")) return Ets2HapticsTest(args);
@@ -366,5 +368,127 @@ public static class Cli
         bool off = svc.SetRumble(0, 0);
         Console.WriteLine($"Rumble on write: {(on ? "OK" : "FAILED")}; off write: {(off ? "OK" : "FAILED")} ({svc.Current!.Connection}).");
         return on && off ? 0 : 2;
+    }
+
+    /// <summary>
+    /// Streams the HD haptics test pattern (150 Hz sine, 50 Hz sine, white noise, 200 Hz ticks, each separated by silence) over Bluetooth
+    /// and prints report interval statistics. <c>--dump=N</c> prints the first N reports as hex for a known pattern instead (no controller).
+    /// </summary>
+    private static int HapticTest(string[] args)
+    {
+        int dump = 0;
+        foreach (var a in args) if (a.StartsWith("--dump=") && int.TryParse(a[7..], out var d)) dump = d;
+        if (dump > 0)
+        {
+            var rep = new byte[HdHaptics.ReportSize];
+            var pcm = new sbyte[64];
+            for (int n = 0; n < dump; n++)
+            {
+                for (int i = 0; i < 64; i++) pcm[i] = (sbyte)((i * 7 + n * 13) % 255 - 127);
+                HdHaptics.BuildReport(rep, (byte)n, pcm);
+                Console.WriteLine(Convert.ToHexString(rep));
+            }
+            return 0;
+        }
+        using var svc = new ControllerService();
+        svc.Poll();
+        if (!svc.Connected) { Console.Error.WriteLine("No DualSense controller found."); return 1; }
+        if (svc.Hid == null) { Console.Error.WriteLine("hidraw not open: " + svc.HidError); return 2; }
+        var hd = svc.GetHdHaptics();
+        if (hd == null) { Console.Error.WriteLine($"HD haptics need a Bluetooth connection (this one is {svc.Current!.Connection})."); return 2; }
+
+        // Pattern timeline in samples: [start, end) per part; fixed tags select the generator.
+        const int R = HdHaptics.SampleRate;
+        (int Start, int End, string Kind)[] parts =
+        [
+            (0, R * 3 / 2, "sine150"), (R * 2, R * 7 / 2, "sine50"), (R * 4, R * 11 / 2, "noise"), (R * 6, R * 8, "ticks"),
+        ];
+        int total = R * 8, pos = 0;
+        uint rng = 12345;
+        double ph = 0;
+        hd.Source = buf =>
+        {
+            for (int i = 0; i < HdHaptics.FramesPerReport; i++, pos++)
+            {
+                double v = 0;
+                foreach (var (st, en, kind) in parts)
+                {
+                    if (pos < st || pos >= en) continue;
+                    double t = (pos - st) / (double)R;
+                    switch (kind)
+                    {
+                        case "sine150": v = 0.8 * Math.Sin(2 * Math.PI * 150 * t); break;
+                        case "sine50": v = 0.9 * Math.Sin(2 * Math.PI * 50 * t); break;
+                        case "noise": rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; v = 0.7 * (rng / (double)uint.MaxValue * 2 - 1); break;
+                        case "ticks":
+                            double inTick = t % 0.4;
+                            if (inTick < 0.03) v = 0.9 * Math.Sin(2 * Math.PI * 200 * inTick);
+                            break;
+                    }
+                }
+                ph = v;
+                buf[2 * i] = buf[2 * i + 1] = (sbyte)Math.Round(Math.Clamp(ph, -1, 1) * 127);
+            }
+            return pos < total;
+        };
+        hd.Wake();
+        // Other output reports (0x31) must keep working while the stream runs: trigger effect on and off, rumble held at 0.
+        Thread.Sleep(2500);
+        bool trig = svc.SetTriggers(TriggerEffect.Vibration(2, 4, 30), TriggerEffect.Off());
+        Thread.Sleep(500);
+        trig &= svc.SetTriggers(TriggerEffect.Off(), TriggerEffect.Off()) & svc.SetRumble(0, 0);
+        Console.WriteLine($"Concurrent 0x31 writes (triggers, rumble 0) during stream: {(trig ? "OK" : "FAILED")}");
+        bool ended = hd.WaitStopped(15000);
+        hd.Source = null;
+        Console.WriteLine($"Reports {hd.Reports}, failed writes {hd.FailedWrites}, interval mean {hd.MeanIntervalMs:F3} ms (target {1000.0 * HdHaptics.FramesPerReport / HdHaptics.SampleRate:F3}), max {hd.MaxIntervalMs:F3} ms");
+        return ended && hd.FailedWrites == 0 ? 0 : 2;
+    }
+
+    /// <summary>Replays a recording (<c>--ets2-bump-test file.csv</c>) through <see cref="Ets2Haptics"/> and counts HD bump bursts; without a file runs the simulator.</summary>
+    private static int Ets2BumpTest(string[] args)
+    {
+        int fi = Array.IndexOf(args, "--ets2-bump-test");
+        string? file = fi + 1 < args.Length && !args[fi + 1].StartsWith("--") ? args[fi + 1] : null;
+        var settings = new Ets2Settings();
+        var h = new Ets2Haptics { SubstanceNames = Ets2Sim.SubstanceNames };
+        int bursts = 0, hit = 0, movingRows = 0;
+        if (file == null)
+        {
+            uint seq = 0;
+            for (int ms = 0; ms < 60000; ms += 33)
+            {
+                double c = ms / 1000.0 % 30;
+                h.Update(Ets2Sim.Frame(ms / 1000.0, ++seq), true, settings, ms);
+                bursts += h.TakeBursts().Count;
+                if (c is >= 10.5 and < 10.8 && h.BumpCount > 0) hit++;
+            }
+            Console.WriteLine($"Sim 60 s: bump bursts {h.BumpCount} (hard hit at t%30=10.5 and landing at 26 expected twice each), total bursts {bursts}, bump in hit window: {hit > 0}");
+            return h.BumpCount >= 2 ? 0 : 2;
+        }
+        var lines = File.ReadAllLines(file);
+        var col = lines[0].Split(',').Select((n, i) => (n, i)).ToDictionary(x => x.n, x => x.i);
+        double D(string[] c, string k) => double.Parse(c[col[k]], System.Globalization.CultureInfo.InvariantCulture);
+        uint sq = 0; double t0 = -1, tl = 0; int events = 0; var perSec = new Dictionary<int, int>();
+        foreach (var l in lines.Skip(1))
+        {
+            var c = l.Split(',');
+            if (c.Length < col.Count) continue;
+            int wheels = (int)D(c, "wheels");
+            var susp = new float[Ets2Packet.MaxWheels];
+            for (int i = 0; i < Ets2Packet.MaxWheels; i++) susp[i] = (float)D(c, "susp" + i);
+            double t = D(c, "t_ms"); if (t0 < 0) t0 = t; tl = t;
+            // Recordings do not carry the side mask; wheels 0, 2, 4 are assumed left, as in the simulator.
+            var p = new Ets2Packet((ushort)(16 | 32), (float)(D(c, "speed_kmh") / 3.6), (float)D(c, "rpm"), 2500, 300, 600, ++sq, WheelCount: wheels,
+                GroundMask: (byte)D(c, "ground"), LeftMask: 0b010101, Susp: susp);
+            int before = h.BumpCount;
+            h.Update(p, true, settings, (long)(t - t0));
+            int fired = h.BumpCount - before;
+            h.TakeBursts();
+            if (fired > 0) { events += fired; perSec[(int)((t - t0) / 1000)] = perSec.GetValueOrDefault((int)((t - t0) / 1000)) + fired; }
+            if (D(c, "speed_kmh") > 20) movingRows++;
+        }
+        double minutes = (tl - t0) / 60000.0;
+        Console.WriteLine($"{Path.GetFileName(file)}: {minutes * 60:F0} s, moving rows {movingRows}, bump bursts {events} ({events / Math.Max(minutes, 0.01):F1}/min), seconds with a bump {perSec.Count}");
+        return 0;
     }
 }

@@ -38,7 +38,7 @@ public sealed class Ets2Mode : IGameMode, IDisposable
         _out = output;
         _hap = output as IHapticOutput;
         _last = null;
-        _lastStrong = _lastWeak = 0; _lastLeft = _lastRight = null;
+        _lastStrong = _lastWeak = 0; _haptics.TakeBursts(); _lastLeft = _lastRight = null;
         _timer = new Timer(_ => Tick(), null, 0, 33);
     }
 
@@ -48,6 +48,7 @@ public sealed class Ets2Mode : IGameMode, IDisposable
         lock (_tickLock)
         {
             // Rumble off and triggers released when the mode stops.
+            _hap?.GetHdHaptics()?.Stop();
             _hap?.SetRumble(0, 0);
             _hap?.SetTriggers(TriggerEffect.Off(), TriggerEffect.Off());
             _hap = null;
@@ -74,11 +75,23 @@ public sealed class Ets2Mode : IGameMode, IDisposable
         _haptics.SubstanceNames = _listener.SubstanceNames;
         var f = _haptics.Update(_listener.Latest, _listener.Connected, Settings, now);
         LastHaptics = $"motor {f.Strong}/{f.Weak} · {f.Active}" + (_haptics.CurrentSurface.Length > 0 ? $" · zemin: {_haptics.CurrentSurface}" : "") + $" · pürüz: {_haptics.Roughness.L:F2}/{_haptics.Roughness.R:F2} (eşik 0.12)";
-        bool changed = f.Strong != _lastStrong || f.Weak != _lastWeak;
-        if (changed || (f.Strong | f.Weak) != 0 && now - _lastRumbleMs >= RumbleKeepaliveMs)
+        // With HD haptics (Bluetooth) the voice coils replace the two rumble motors; rumble is held at 0 in the 0x31 reports.
+        var hd = Settings.HdHaptics ? h.GetHdHaptics() : null;
+        byte strong = f.Strong, weak = f.Weak;
+        if (hd != null)
         {
-            h.SetRumble(f.Strong, f.Weak);
-            _lastStrong = f.Strong; _lastWeak = f.Weak; _lastRumbleMs = now;
+            hd.MasterGain = Math.Clamp(Settings.HdMasterGain, 0, 100) * 0.01f;
+            hd.SetLayers(_haptics.Layers);
+            foreach (var b in _haptics.TakeBursts()) hd.Burst(b.Side, b.Hz, b.Amp, b.DurMs);
+            strong = weak = 0;
+            LastHaptics = "HD · " + LastHaptics;
+        }
+        else _haptics.TakeBursts();
+        bool changed = strong != _lastStrong || weak != _lastWeak;
+        if (changed || (strong | weak) != 0 && now - _lastRumbleMs >= RumbleKeepaliveMs)
+        {
+            h.SetRumble(strong, weak);
+            _lastStrong = strong; _lastWeak = weak; _lastRumbleMs = now;
         }
         if (!f.Left.SameAs(_lastLeft) || !f.Right.SameAs(_lastRight))
         {

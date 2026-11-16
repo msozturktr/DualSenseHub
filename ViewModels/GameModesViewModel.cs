@@ -56,6 +56,11 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _brakeTriggerLevel;
     [ObservableProperty] private bool _engineRumble;
     [ObservableProperty] private double _engineRumbleLevel;
+    [ObservableProperty] private bool _hdHaptics;
+    [ObservableProperty] private double _hdMasterGain;
+    [ObservableProperty] private double _hdEngineLevel;
+    [ObservableProperty] private double _hdRoadLevel;
+    [ObservableProperty] private double _bumpSensitivity;
     [ObservableProperty] private bool _crashRumble;
     [ObservableProperty] private double _crashRumbleLevel;
     [ObservableProperty] private int _gaugeIndex;
@@ -85,6 +90,7 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
         EngineRumble = s.EngineRumble; EngineRumbleLevel = s.EngineRumbleLevel;
         CrashRumble = s.CrashRumble; CrashRumbleLevel = s.CrashRumbleLevel; GaugeIndex = (int)s.Gauge;
         Abs = s.Abs; AbsLevel = s.AbsLevel;
+        HdHaptics = s.HdHaptics; HdMasterGain = s.HdMasterGain; HdEngineLevel = s.HdEngineLevel; HdRoadLevel = s.HdRoadLevel; BumpSensitivity = s.BumpSensitivity;
         _loading = false;
         _saveTimer = new Timer(_ => ConfigStore.SaveEts2(_ets2.Settings), null, Timeout.Infinite, Timeout.Infinite);
         _auto.Enabled = s.AutoStart;
@@ -124,6 +130,11 @@ public sealed partial class GameModesViewModel : ObservableObject, IDisposable
     partial void OnEngineRumbleLevelChanged(double value) => Edit(s => s.EngineRumbleLevel = (int)Math.Round(value));
     partial void OnCrashRumbleChanged(bool value) => Edit(s => s.CrashRumble = value);
     partial void OnCrashRumbleLevelChanged(double value) => Edit(s => s.CrashRumbleLevel = (int)Math.Round(value));
+    partial void OnHdHapticsChanged(bool value) => Edit(s => s.HdHaptics = value);
+    partial void OnHdMasterGainChanged(double value) => Edit(s => s.HdMasterGain = (int)Math.Round(value));
+    partial void OnHdEngineLevelChanged(double value) => Edit(s => s.HdEngineLevel = (int)Math.Round(value));
+    partial void OnHdRoadLevelChanged(double value) => Edit(s => s.HdRoadLevel = (int)Math.Round(value));
+    partial void OnBumpSensitivityChanged(double value) => Edit(s => s.BumpSensitivity = (int)Math.Round(value));
     partial void OnGaugeIndexChanged(int value) => Edit(s => s.Gauge = (LedGauge)Math.Clamp(value, 0, 3));
     partial void OnAbsChanged(bool value) => Edit(s => s.Abs = value);
     partial void OnAbsLevelChanged(double value) => Edit(s => s.AbsLevel = (int)Math.Round(value));

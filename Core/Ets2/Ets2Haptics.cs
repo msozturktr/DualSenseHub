@@ -6,6 +6,9 @@ public sealed record HapticFrame(byte Strong, byte Weak, TriggerEffect Left, Tri
     public static HapticFrame Idle() => new(0, 0, TriggerEffect.Off(), TriggerEffect.Off(), "");
 }
 
+/// <summary>A transient for the HD voice coils: decaying sine of <see cref="Hz"/>, peak <see cref="Amp"/> (0-1), lasting <see cref="DurMs"/>.</summary>
+public readonly record struct HdBurst(HdSide Side, double Hz, double Amp, double DurMs);
+
 /// <summary>Per-wheel road-feel internals of the last packet (suspension speed, running baseline, excess); for recording/tuning only.</summary>
 public sealed class WheelDiagnostics
 {
@@ -43,6 +46,38 @@ public sealed class Ets2Haptics
     private const long HitRefractoryMs = 120;        // minimum gap between hits so they read as discrete bumps
     private const double PercentToUnit = 0.01;
 
+    // HD bumps: suspension speed above the running baseline. Real drives (recordings) show 99 % of samples below 0.13 m/s
+    // and isolated bumps at 0.4-2 m/s, so the threshold sits well under the old hit threshold (1.4-3 m/s).
+    private const double BumpThresholdMax = 0.6, BumpThresholdMin = 0.12; // m/s above baseline at sensitivity 0 / 100 %
+    private const double BumpFull = 2.0;            // m/s above baseline that maps to a full bump
+    private const long BumpRefractoryMs = 80;       // per wheel
+    private const double TextureSpeedFull = 0.3;    // smoothed suspension speed (m/s) that gives full road texture
+    private const double TextureTau = 0.2;          // s, smoothing of the continuous texture
+    private const double HdRumblePeriodMs = 67;
+    private readonly long[] _lastBump = new long[Ets2Packet.MaxWheels];
+    private readonly List<HdBurst> _bursts = new();
+    private double _vL, _vR;                        // smoothed mean suspension speed per side
+    private long _lastRumbleSlot = -1, _nextAbsPulse;
+    /// <summary>Continuous HD layers computed by the last <see cref="Update"/> (amplitudes already scaled by the level settings).</summary>
+    public HdLayers Layers { get; private set; } = HdLayers.Silent;
+    /// <summary>Number of bump bursts fired since creation (diagnostics).</summary>
+    public int BumpCount { get; private set; }
+
+    /// <summary>Returns and clears the transients fired since the last call.</summary>
+    public List<HdBurst> TakeBursts()
+    {
+        if (_bursts.Count == 0) return _bursts;
+        var r = new List<HdBurst>(_bursts);
+        _bursts.Clear();
+        return r;
+    }
+
+    private void AddBurst(HdSide side, double hz, double amp, double durMs)
+    {
+        if (_bursts.Count >= 48) _bursts.RemoveAt(0); // nobody is draining (recorder instance)
+        _bursts.Add(new HdBurst(side, hz, Math.Clamp(amp, 0, 1), durMs));
+    }
+
     private readonly float[] _prevSusp = new float[Ets2Packet.MaxWheels];
     private readonly bool[] _spun = new bool[Ets2Packet.MaxWheels]; // wheel was seen rotating freely, so its data is trustworthy
     private byte _prevGround;
@@ -77,6 +112,7 @@ public sealed class Ets2Haptics
     private void Reset()
     {
         _hasPrev = false; _hasPrevCrash = false; _crashStart = -1; _surfL = _surfR = Surface.Road; _hitUntil = -1; _lastHit = -100000; CurrentSurface = ""; _kickUntil = _absUntil = -1; _lastSeq = -1;
+        _vL = _vR = 0; _bursts.Clear(); Layers = HdLayers.Silent;
     }
 
     public HapticFrame Update(Ets2Packet p, bool connected, Ets2Settings s, long nowMs)
@@ -90,9 +126,9 @@ public sealed class Ets2Haptics
         {
             double pktDt = (nowMs - _lastPktMs) / 1000.0;
             Diag.Clear();
-            if (_hasPrev && pktDt > 0.005 && pktDt < 0.25) Road(p, pktDt, nowMs, s.RoadSensitivity * PercentToUnit);
-            Crash(p, pktDt, nowMs);
-            Gear(p, nowMs);
+            if (_hasPrev && pktDt > 0.005 && pktDt < 0.25) Road(p, pktDt, nowMs, s);
+            Crash(p, pktDt, nowMs, s);
+            Gear(p, nowMs, s);
             for (int i = 0; i < Ets2Packet.MaxWheels; i++) _prevSusp[i] = p.Susp != null && i < p.Susp.Length ? p.Susp[i] : 0;
             _prevGround = p.GroundMask; _hasPrev = true; _lastSeq = p.Seq; _lastPktMs = nowMs;
         }
@@ -137,6 +173,8 @@ public sealed class Ets2Haptics
             active.Add("engine");
         }
 
+        UpdateHd(p, s, nowMs);
+
         var left = TriggerEffect.Off();
         var right = TriggerEffect.Off();
         // R2 is a static effect (light travel, kickdown detent), so it only changes with the settings.
@@ -155,10 +193,46 @@ public sealed class Ets2Haptics
                 int amp = 1 + (int)Math.Round(s.AbsLevel * PercentToUnit * 7);
                 left = TriggerEffect.Vibration(2, amp, 30);
                 weak = Math.Max(weak, 0.4 * s.AbsLevel * PercentToUnit);
+                if (nowMs >= _nextAbsPulse) { AddBurst(HdSide.Both, 90, 0.7 * s.AbsLevel * PercentToUnit, 25); _nextAbsPulse = nowMs + 60; }
                 active.Add("abs");
             }
         }
         return new HapticFrame(Motor(strong), Motor(weak), left, right, string.Join(",", active));
+    }
+
+    /// <summary>Continuous HD layers (engine hum, road texture, rumble strip pulses) from the current packet.</summary>
+    private void UpdateHd(Ets2Packet p, Ets2Settings s, long nowMs)
+    {
+        double engHz = 40, engAmp = 0, roadL = 0, roadR = 0;
+        if (s.HdEngineLevel > 0 && p.EngineOn && p.Rpm > 50)
+        {
+            double ratio = Math.Clamp(p.Rpm / (p.RpmLimit > 0 ? p.RpmLimit : 2500), 0, 1);
+            // Pitch follows RPM like a 6-cylinder diesel's firing rate (3 pulses/rev); throttle only adds a little load.
+            engHz = Math.Clamp(p.Rpm / 60.0 * 3, 20, 110);
+            engAmp = 0.5 * s.HdEngineLevel * PercentToUnit * (0.3 + 0.7 * ratio) * (0.85 + 0.15 * Math.Clamp(p.ColorThrottle, 0, 1));
+        }
+        if (s.RoadFeel)
+        {
+            double lv = s.HdRoadLevel * PercentToUnit;
+            double sf = Math.Clamp((p.SpeedKmh - TextureMinKmh) / (TextureFullKmh - TextureMinKmh), 0, 1);
+            double cl = sf * Math.Clamp(_vL / TextureSpeedFull, 0, 1) * 0.5, cr = sf * Math.Clamp(_vR / TextureSpeedFull, 0, 1) * 0.5;
+            // Broken asphalt and loose surfaces add on top of the measured suspension motion.
+            double rl = _surfL == Surface.Rough ? RoughBase + RoughSpeedGain * sf : RoughGain * sf * Math.Clamp((_roughL - RoughStart) / (RoughFull - RoughStart), 0, 1);
+            double rr = _surfR == Surface.Rough ? RoughBase + RoughSpeedGain * sf : RoughGain * sf * Math.Clamp((_roughR - RoughStart) / (RoughFull - RoughStart), 0, 1);
+            roadL = Math.Min(1, Math.Max(cl, rl * 0.6) * lv); roadR = Math.Min(1, Math.Max(cr, rr * 0.6) * lv);
+            if (sf > 0 && (_surfL == Surface.Rumble || _surfR == Surface.Rumble))
+            {
+                long slot = (long)(nowMs / HdRumblePeriodMs);
+                if (slot != _lastRumbleSlot)
+                {
+                    _lastRumbleSlot = slot;
+                    double a = (RumbleBase + RumbleSpeedGain * sf) * lv;
+                    if (_surfL == Surface.Rumble) AddBurst(HdSide.Left, 70, a, 35);
+                    if (_surfR == Surface.Rumble) AddBurst(HdSide.Right, 70, a, 35);
+                }
+            }
+        }
+        Layers = new HdLayers(engHz, engAmp, engAmp, roadL, roadR);
     }
 
     /// <summary>Weapon-style detent that builds resistance and snaps through near the end of travel; nothing before it keeps the pedal light.</summary>
@@ -204,14 +278,18 @@ public sealed class Ets2Haptics
         };
     }
 
-    private void Road(Ets2Packet p, double dt, long nowMs, double sensitivity)
+    private void Road(Ets2Packet p, double dt, long nowMs, Ets2Settings s)
     {
+        double sensitivity = s.RoadSensitivity * PercentToUnit;
         if (p.Susp == null || p.WheelCount == 0) return;
         bool sidesKnown = p.LeftMask != 0 && p.LeftMask != (1 << p.WheelCount) - 1;
         bool moving = p.SpeedKmh >= MinRoadSpeedKmh;
         dt = Math.Max(dt, MinDt); // back-to-back packets (flag changes) would otherwise amplify tiny deltas
         double a = Math.Min(1, dt / BaselineTau);
         double threshold = HitThresholdMax - (HitThresholdMax - HitThresholdMin) * Math.Clamp(sensitivity, 0, 1);
+        double bumpTh = BumpThresholdMax - (BumpThresholdMax - BumpThresholdMin) * Math.Clamp(s.BumpSensitivity * PercentToUnit, 0, 1);
+        double bumpLevel = s.HdRoadLevel * PercentToUnit;
+        double sumL = 0, sumR = 0;
         Surface sl = Surface.Road, sr = Surface.Road;
         string primary = "", first = "";
         int cl = 0, nl = 0, cr = 0, nr = 0;
@@ -242,14 +320,28 @@ public sealed class Ets2Haptics
                 if (!sidesKnown || isLeft) { nl++; if (spike) cl++; }
                 if (!sidesKnown || !isLeft) { nr++; if (spike) cr++; }
                 _suspBase[i] += (v - _suspBase[i]) * a;
+                if (!sidesKnown || isLeft) sumL += v;
+                if (!sidesKnown || !isLeft) sumR += v;
+                if (moving && s.RoadFeel && excess > bumpTh && nowMs - _lastBump[i] >= BumpRefractoryMs)
+                {
+                    double m = Math.Pow(Math.Clamp((excess - bumpTh) / (BumpFull - bumpTh), 0, 1), 0.6);
+                    AddBurst(sidesKnown ? (isLeft ? HdSide.Left : HdSide.Right) : HdSide.Both, 90 - 45 * m, (0.3 + 0.7 * m) * bumpLevel, 40 + 80 * m);
+                    _lastBump[i] = nowMs; BumpCount++;
+                }
                 if (moving && excess > threshold) x = 0.6 + 0.4 * Math.Clamp((excess - threshold) / (HitFull - threshold), 0, 1);
             }
-            else if (now && !was && moving && _airS[i] >= MinAirborneS) x = 0.9; // real landing, not a lift axle or flicker
+            else if (now && !was && moving && _airS[i] >= MinAirborneS) // real landing, not a lift axle or flicker
+            {
+                x = 0.9;
+                if (s.RoadFeel) AddBurst(sidesKnown ? (isLeft ? HdSide.Left : HdSide.Right) : HdSide.Both, 45, 0.9 * bumpLevel, 140);
+            }
             _airS[i] = now ? 0 : _airS[i] + dt;
             if (x > 0 && nowMs - _lastHit >= HitRefractoryMs)
             { _hitAmp = x; _hitUntil = nowMs + HitMs; _lastHit = nowMs; }
         }
         _surfL = sl; _surfR = sr;
+        double tk = Math.Min(1, dt / TextureTau);
+        _vL += ((nl > 0 ? sumL / nl : 0) - _vL) * tk; _vR += ((nr > 0 ? sumR / nr : 0) - _vR) * tk;
         _rough.Enqueue((nowMs, cl, nl, cr, nr)); _rL += cl; _rNL += nl; _rR += cr; _rNR += nr;
         while (_rough.Count > 0 && nowMs - _rough.Peek().T > RoughWindowMs)
         { var o = _rough.Dequeue(); _rL -= o.L; _rNL -= o.NL; _rR -= o.R; _rNR -= o.NR; }
@@ -261,7 +353,7 @@ public sealed class Ets2Haptics
     /// Detects an impact from a jump in summed wear (repairs, i.e. decreases, are ignored) or an acceleration spike.
     /// The first frame, a long packet gap and a truck/config change only update the baseline.
     /// </summary>
-    private void Crash(Ets2Packet p, double pktDt, long nowMs)
+    private void Crash(Ets2Packet p, double pktDt, long nowMs, Ets2Settings s)
     {
         bool cfgSame = p.WheelCount == _prevWheels && p.RpmLimit == _prevRpmLimit && p.FuelCapacity == _prevFuelCap;
         if (_hasPrevCrash && cfgSame && pktDt < 0.25)
@@ -278,17 +370,27 @@ public sealed class Ets2Haptics
                 _crashPeak = Math.Max(remaining, 0.5 + 0.5 * impact);
                 _crashStart = nowMs;
                 _crashDur = (long)(150 + 250 * impact);
+                if (s.CrashRumble)
+                {
+                    double ca = _crashPeak * s.CrashRumbleLevel * PercentToUnit;
+                    AddBurst(HdSide.Both, 55, ca, _crashDur * 1.5);
+                    AddBurst(HdSide.Both, 110, 0.7 * ca, 90);
+                }
             }
         }
         _prevWear = p.WearTotal; _prevWheels = p.WheelCount; _prevRpmLimit = p.RpmLimit; _prevFuelCap = p.FuelCapacity;
         _hasPrevCrash = true;
     }
 
-    private void Gear(Ets2Packet p, long nowMs)
+    private void Gear(Ets2Packet p, long nowMs, Ets2Settings s)
     {
         // Neutral (0) is ignored so brief neutral flaps during a shift do not count as a new gear.
         if (p.Gear == 0) return;
-        if (_lastGear != int.MinValue && p.Gear != _lastGear) _kickUntil = nowMs + KickMs;
+        if (_lastGear != int.MinValue && p.Gear != _lastGear)
+        {
+            _kickUntil = nowMs + KickMs;
+            if (s.GearShift) AddBurst(HdSide.Both, 180, 1.2 * s.GearShiftLevel * PercentToUnit, 25);
+        }
         _lastGear = p.Gear;
     }
 
